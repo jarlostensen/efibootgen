@@ -1280,7 +1280,7 @@ int main(int argc, char** argv)
     //
     //
 
-    cxxopts::Options options("efigen");
+    cxxopts::Options options("efibootgen");
 
     options.add_options()
         ("i,input", "source kernel binary, must be BOOTX64.EFI", cxxopts::value<std::string>())
@@ -1292,7 +1292,7 @@ int main(int argc, char** argv)
     const auto result = options.parse(argc, argv);
 
     std::cout << "------------------------------------\n";
-    std::cout << "efigen EFI boot disk creator\n";
+    std::cout << "efibootgen EFI boot disk creator\n";
     std::cout << "by jarl.ostensen\n\n";
 
     if (result.count("help") || !result.count("input") || !result.count("output"))
