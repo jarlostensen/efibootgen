@@ -827,8 +827,8 @@ namespace disktools
         {
             // the contents of a file are laid out in a linear chain starting at 
             // the start cluster, here we just copy it in sector by sector
-            auto file_sector = cluster_to_lba(entry._content._file->_start_cluster);
-            auto bytes_left = entry._content._file->_size;
+            auto file_sector = cluster_to_lba(entry._content._file->_start_cluster);            
+            auto bytes_left = static_cast<long long>(entry._content._file->_size);
             const auto* bytes = static_cast<const char*>(entry._content._file->_data);
             do
             {
@@ -836,9 +836,9 @@ namespace disktools
                 writer->write_at(file_sector++, 1);
                 bytes += kSectorSizeBytes;
                 bytes_left -= kSectorSizeBytes;
-            } while (bytes_left >= kSectorSizeBytes);
+            } while (bytes_left >= static_cast<long long>(kSectorSizeBytes));
 
-            if (bytes_left)
+            if (bytes_left>0)
             {
                 memcpy(writer->blank_sector(), bytes, bytes_left);
                 writer->write_at(file_sector, 1);
@@ -2007,21 +2007,8 @@ int main(int argc, char** argv)
         CHECK_REPORT_ABORT_ERROR(fat_result);
 
         writer->flush();
-
         delete writer;
     }
-
-    //else
-    //{
-    //    const auto boot_image_file = result["bootimage"].as<std::string>();
-
-    //    if (!disktools::gpt::create_efi_boot_image(boot_image_file, output_file))
-    //    {
-    //        //TODO: print error
-    //        std::cerr << "\tcreate failed\n";
-    //        return -1;
-    //    }
-    //}
 
     std::cout << "\tboot image created" << std::endl;
 }
