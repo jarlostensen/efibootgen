@@ -11,6 +11,11 @@
 #include <stack>
 namespace fs = std::filesystem;
 
+// none of these are critical to us at this point
+#pragma warning(disable:5045)
+#pragma warning(disable:4514)
+#pragma warning(disable:4820)
+
 #pragma warning(push, 3)
 #include "cxxopts-2.2.0/include/cxxopts.hpp"
 #pragma warning(pop)
@@ -145,6 +150,14 @@ namespace disktools
         {
             if (good())
                 _ofs.seekp(_start_pos, std::ios::beg);
+        }
+
+        void flush()
+        {
+            if (good())
+            {
+                _ofs.flush();
+            }
         }
 
         char* blank_sector(size_t count = 1)
@@ -300,9 +313,10 @@ namespace disktools
                         if (ifs.is_open())
                         {
                             ifs.seekg(0, std::ios::end);
-                            const auto size = ifs.tellg();
-                            ifs.seekg(0, std::ios::end);
+                            const auto endpos = ifs.tellg();
+                            ifs.seekg(0, std::ios::beg);
 
+                            const auto size = size_t(endpos);
                             auto* buffer = new char[size];
                             ifs.read(buffer, size);
                             ifs.close();
@@ -343,18 +357,20 @@ namespace disktools
         [[nodiscard]]
         System::StatusOr<bool> create_from_source(const std::string& systemRootPath)
         {
+            // strip any leading gunk so that the name is clean for the root directory entry
             const auto name_start = systemRootPath.find_first_not_of("./\\");
             if ( name_start==std::string::npos )
             {
                 return System::Code::NOT_FOUND;
             }
 
-            auto result = create_directory(&_root, systemRootPath.substr(name_start));
+            const auto stripped_root_path = systemRootPath.substr(name_start);
+            auto result = create_directory(&_root, stripped_root_path);
             if (!result)
             {
                 return result.ErrorCode();
             }
-            return add_dir(result.Value(), systemRootPath);
+            return add_dir(result.Value(), stripped_root_path);
         }
 
         [[nodiscard]]
@@ -1976,9 +1992,9 @@ int main(int argc, char** argv)
     if (result.count("directory"))
     {
         disktools::fs_t fs;
-        auto create_result = fs.create_from_source(result["directory"].as<std::string>());
+        auto create_result = fs.create_from_source(result["directory"].as<std::string>());        
         CHECK_REPORT_ABORT_ERROR(create_result);
-
+        
         auto writer_result = disktools::disk_sector_writer_t::create_writer(output_file, fs.size());
         CHECK_REPORT_ABORT_ERROR(writer_result);
         auto* writer = writer_result.Value();
@@ -1989,6 +2005,8 @@ int main(int argc, char** argv)
         const auto part_info = part_result.Value();
         auto fat_result = disktools::fat::format_efi_boot_partition_2(writer, part_info.num_sectors(), "efi boot", fs);
         CHECK_REPORT_ABORT_ERROR(fat_result);
+
+        writer->flush();
 
         delete writer;
     }
