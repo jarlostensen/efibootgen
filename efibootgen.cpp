@@ -249,6 +249,7 @@ namespace disktools
             std::string     _name;
             dir_entries_t   _entries;
             size_t          _start_cluster;
+            dir_t*          _parent;
         };
 
         fs_t()
@@ -306,7 +307,10 @@ namespace disktools
                             ifs.read(buffer, size);
                             ifs.close();
 
-                            /* _ =*/ create_file(parent, i->path().filename().string(), buffer, size);
+                            /* _ =*/ create_file(parent,
+                                //NOTE: "FOO.BAR" -> "FOO BAR"
+                                i->path().stem().string() + " "  + i->path().filename().extension().string().substr(1),
+                                buffer, size);
 
                             // next item
                             ++i;
@@ -339,7 +343,13 @@ namespace disktools
         [[nodiscard]]
         System::StatusOr<bool> create_from_source(const std::string& systemRootPath)
         {
-            auto result = create_directory(&_root, systemRootPath);
+            const auto name_start = systemRootPath.find_first_not_of("./\\");
+            if ( name_start==std::string::npos )
+            {
+                return System::Code::NOT_FOUND;
+            }
+
+            auto result = create_directory(&_root, systemRootPath.substr(name_start));
             if (!result)
             {
                 return result.ErrorCode();
@@ -355,6 +365,7 @@ namespace disktools
             dir_entry_t dir_entry{ true };
             dir_entry._content._dir = new dir_t;
             dir_entry._content._dir->_name = name;
+            dir_entry._content._dir->_parent = parent;
             //NOTE: a directory is limited to 512 bytes = 16 entries here
             _size += kSectorSizeBytes;
 
@@ -822,6 +833,17 @@ namespace disktools
         void write_dir(disk_sector_writer_t* writer, cluster_to_lba_func_t& cluster_to_lba, const fs_t::dir_entry_t& entry_)
         {
             auto* dir_entry = reinterpret_cast<fat_dir_entry_t*>(writer->blank_sector());
+
+            // add standard "." and ".." entries
+            dir_entry->set_name(".");
+            dir_entry->_attrib = uint8_t(fat_file_attribute::kDirectory);
+            dir_entry->_first_cluster_lo = entry_._content._dir->_start_cluster;
+            dir_entry++;
+            dir_entry->set_name("..");
+            dir_entry->_attrib = uint8_t(fat_file_attribute::kDirectory);
+            dir_entry->_first_cluster_lo = entry_._content._dir->_parent->_start_cluster;
+            dir_entry++;
+
             const auto entries = entry_._content._dir->_entries;
             for (auto& [name, entry] : entries)
             {
@@ -1954,7 +1976,7 @@ int main(int argc, char** argv)
     if (result.count("directory"))
     {
         disktools::fs_t fs;
-        auto create_result = fs.create_from_source(result["directory"].as<std::string>());        
+        auto create_result = fs.create_from_source(result["directory"].as<std::string>());
         CHECK_REPORT_ABORT_ERROR(create_result);
 
         auto writer_result = disktools::disk_sector_writer_t::create_writer(output_file, fs.size());
