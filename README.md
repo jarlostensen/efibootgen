@@ -21,3 +21,6 @@ To create a standard EFI\BOOT\BOOTX64.EFI layout
 The project is built with Visual Studio 2019 and requires C++ 17 standard support. 
 The code itself is generic and should be straight forward to build and use with GCC or Clang.
 
+## TODO
+* confirm that FAT32 dynamic layout works. Static works (-b) but -d only tested with FAT16)
+* rinse and repeat for clarity
