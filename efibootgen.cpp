@@ -928,6 +928,11 @@ namespace disktools
             dir_entry->_attrib = uint8_t(fat_file_attribute::kVolumeId);
             ++dir_entry;
 
+            if (_verbose)
+            {
+                std::cout << "\tvolume label \"" << volumeLabel << "\"\n";
+            }
+
             // the root directory (for either FAT16 or FAT32) is special and has no '.' or '..' entries
             //TODO:ZZZ: check for overrun
             for (auto& [name, entry] : fs._root._entries)
@@ -1441,8 +1446,6 @@ int main(int argc, char** argv)
     const auto output_option = opts.add(option_constraint_t::kRequired, option_type_t::kText, "o,output", "output path name of created disk image", option_default_t::kNotPresent);
     const auto label_option = opts.add(option_constraint_t::kOptional, option_type_t::kText, "l,label", "volume label of image", option_default_t::kPresent, "NOLABEL");
     //NOTE: help is *always* available as -h or --help
-
-    //TODO?: opts.add(jopts::constraints_t::kRequiredOr, directory_option, bootimage_option);
 
     const auto parse_result = opts.parse(argc, argv);
     if (!parse_result || parse_result.value()==0 )
