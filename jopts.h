@@ -194,8 +194,7 @@ namespace jopts
 
         // parse the parameters.
         // if strict then any unknown argument causes the parser to fail
-        // TODO: upper-lower case
-        // TODO: more types
+        // TODO: more types or kill the ones we don't use
         System::status_or_t<bool> parse(int argc, char** argv, bool strict = false)
         {
             //ZZZ: perhaps too strict?
@@ -203,6 +202,10 @@ namespace jopts
             {
                 return System::Code::ALREADY_EXISTS;
             }
+
+            _options.clear();
+            _short.clear();
+            _long.clear();
 
             // always add this
             const auto res = add(option_constraint_t::kOptional, option_type_t::kFlag, "h,help", "about this application", option_default_t::kNotPresent);
@@ -283,6 +286,7 @@ namespace jopts
                 }
             }
 
+            _parsed = true;
             return true;
         }
 
