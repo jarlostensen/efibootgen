@@ -166,6 +166,12 @@
   <ItemGroup>
     <ClCompile Include="efibootgen.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="fat.h" />
+    <ClInclude Include="gpt.h" />
+    <ClInclude Include="jopts.h" />
+    <ClInclude Include="status.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
