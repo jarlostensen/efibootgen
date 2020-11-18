@@ -8,7 +8,9 @@
 #include <random>
 #include <functional>
 #include <filesystem>
+#include <unordered_map>
 #include <stack>
+#include <cstdarg>
 namespace fs = std::filesystem;
 
 // none of these are critical to us at this point
@@ -16,20 +18,10 @@ namespace fs = std::filesystem;
 #pragma warning(disable:4514)
 #pragma warning(disable:4820)
 
-#pragma warning(push, 3)
-#include "cxxopts-2.2.0/include/cxxopts.hpp"
-#pragma warning(pop)
-
 #include "status.h"
 #include "fat.h"
 #include "gpt.h"
-
-#define CHECK_REPORT_ABORT_ERROR(result)\
-    if (!result)\
-    {\
-        std::cerr << "* error: " << result.ErrorCode() << std::endl;\
-        return -1;\
-    }
+#include "jopts.h"
 
 namespace utils
 {
@@ -125,7 +117,7 @@ namespace disktools
             _ofs.close();
         }
 
-        static System::StatusOr<disk_sector_writer_t*> create_writer(const std::string&, size_t);
+        static System::status_or_t<disk_sector_writer_t*> create_writer(const std::string&, size_t);
 
         bool set_pos(size_t lba)
         {
@@ -282,7 +274,7 @@ namespace disktools
             return _root._entries.empty();
         }
 
-        System::StatusOr<bool> add_dir(dir_t* parent, const std::string& sysRootPath) {
+        System::status_or_t<bool> add_dir(dir_t* parent, const std::string& sysRootPath) {
 
             //NOTE: the std recursive_directory_iterator does not make any guarantees about the
             //      order of traversal so instead of using it we're doing our own version here.
@@ -305,12 +297,12 @@ namespace disktools
                             const auto rec_path = i->path();
                             //NOTE: advance past current entry before pushing
                             rec_stack.emplace(parent, std::move(++i));
-                            parent = result.Value();
+                            parent = result.value();
                             i = fs::directory_iterator(rec_path);
                         }
                         else
                         {
-                            return result.ErrorCode();
+                            return result.error_code();
                         }
                     }
                     else
@@ -362,7 +354,7 @@ namespace disktools
         };
 
         [[nodiscard]]
-        System::StatusOr<bool> create_from_source(const std::string& systemRootPath)
+        System::status_or_t<bool> create_from_source(const std::string& systemRootPath)
         {
             // strip any leading gunk so that the name is clean for the root directory entry
             const auto name_start = systemRootPath.find_first_not_of("./\\");
@@ -375,13 +367,13 @@ namespace disktools
             auto result = create_directory(&_root, stripped_root_path);
             if (!result)
             {
-                return result.ErrorCode();
+                return result.error_code();
             }
-            return add_dir(result.Value(), stripped_root_path);
+            return add_dir(result.value(), stripped_root_path);
         }
 
         [[nodiscard]]
-        System::StatusOr<dir_t*> create_directory(dir_t* parent, const std::string& name_)
+        System::status_or_t<dir_t*> create_directory(dir_t* parent, const std::string& name_)
         {
             std::string name = name_;
             if (!_preserve_case)
@@ -403,13 +395,13 @@ namespace disktools
         }
 
         [[nodiscard]]
-        System::StatusOr<dir_t*> create_directory(const std::string& name)
+        System::status_or_t<dir_t*> create_directory(const std::string& name)
         {
             return create_directory(&_root, name);
         }
 
         [[nodiscard]]
-        System::StatusOr<file_t*> create_file(dir_t* parent, const std::string& name_, const void* data, size_t size)
+        System::status_or_t<file_t*> create_file(dir_t* parent, const std::string& name_, const void* data, size_t size)
         {
             std::string name = name_;
             if (!_preserve_case)
@@ -452,7 +444,7 @@ namespace disktools
         size_t          _size = 0;
     };
 
-    System::StatusOr<disk_sector_writer_t*> disk_sector_writer_t::create_writer(const std::string& oName, size_t content_size)
+    System::status_or_t<disk_sector_writer_t*> disk_sector_writer_t::create_writer(const std::string& oName, size_t content_size)
     {
         // round size up to nearest 128 Megs. This pushes us out of the "floppy disk" domain
         size_t size = (content_size + (0x8000000 - 1)) & ~(0x8000000 - 1);
@@ -922,7 +914,7 @@ namespace disktools
             }
         }
 
-        System::StatusOr<bool> write_fs_contents_to_disk(disk_sector_writer_t* writer, size_t root_dir_start_lba,
+        System::status_or_t<bool> write_fs_contents_to_disk(disk_sector_writer_t* writer, size_t root_dir_start_lba,
             size_t first_data_lba, size_t sectors_per_cluster,
             const char* volumeLabel, const fs_t& fs)
         {
@@ -981,7 +973,7 @@ namespace disktools
             return true;
         }
 
-        System::StatusOr<bool> format_efi_boot_partition(disk_sector_writer_t* writer, size_t total_sectors, const char* volumeLabel, const fs_t& fs)
+        System::status_or_t<bool> format_efi_boot_partition(disk_sector_writer_t* writer, size_t total_sectors, const char* volumeLabel, const fs_t& fs)
         {
             if (!writer->good() || !total_sectors)
                 return System::Code::FAILED_PRECONDITION;
@@ -1078,7 +1070,7 @@ namespace disktools
                 extended_bpb_ptr = reinterpret_cast<char*>(&extended_bpb._fat16);
                 extended_bpb_size = sizeof extended_bpb._fat16;
 
-                if (_verbose )
+                if (_verbose)
                 {
                     std::cout << "\tfilesystem is FAT16\n";
                 }
@@ -1117,7 +1109,7 @@ namespace disktools
                 extended_bpb_ptr = reinterpret_cast<char*>(&extended_bpb._fat32);
                 extended_bpb_size = sizeof extended_bpb._fat32;
 
-                if (_verbose )
+                if (_verbose)
                 {
                     std::cout << "\tfilesystem is FAT32\n";
                 }
@@ -1258,7 +1250,7 @@ namespace disktools
             // the root directory comes first and resides inside the reserved area for FAT16 and in the first data cluster for FAT32
             // subsequent directories (and files) are created linearly from free clusters.
 
-            write_fs_contents_to_disk(writer, root_dir_start_lba, 
+            write_fs_contents_to_disk(writer, root_dir_start_lba,
                 first_data_lba, boot_sector._bpb._sectors_per_cluster,
                 volumeLabel, fs);
 
@@ -1291,7 +1283,7 @@ namespace disktools
         //
         // assumes writer is initialised and a blank image has been created.
         //
-        System::StatusOr<partition_info_t> create_efi_boot_image(disk_sector_writer_t* writer)
+        System::status_or_t<partition_info_t> create_efi_boot_image(disk_sector_writer_t* writer)
         {
             // ===============================================
             // protective MBR
@@ -1412,6 +1404,13 @@ namespace disktools
     }
 }
 
+#define CHECK_REPORT_ABORT_ERROR(result)\
+if (!result)\
+{\
+    std::cerr << "* error: " << result.error_code() << std::endl;\
+    return -1;\
+}
+
 int main(int argc, char** argv)
 {
     // use 7-zip manager to open the image file and examine the contents.
@@ -1429,48 +1428,50 @@ int main(int argc, char** argv)
     //
     //
 
-    cxxopts::Options options("efibootgen");
-
-    options.add_options()
-        ("d, directory", "source directory to copy to disk image", cxxopts::value<std::string>())
-        ("b, bootimage", "source kernel binary, must be BOOTX64.EFI. This creates a standard EFI/BOOOT/BOOTX64.EFI layout.", cxxopts::value<std::string>())
-        ("o,output", "output disk image file", cxxopts::value<std::string>())
-        ("v,verbose", "output more information about the build process", cxxopts::value<bool>()->default_value("false"))
-        ("c,case", "preserve case of filenames. Default converts to UPPER", cxxopts::value<bool>()->default_value("false"))
-        ("h,help", "usage")
-        ;
-
-    const auto result = options.parse(argc, argv);
-
     std::cout << "------------------------------------\n";
     std::cout << "efibootgen EFI boot disk creator\n";
     std::cout << "by jarl.ostensen\n\n";
 
-    if (result.count("help")
-        ||
-        (!result.count("bootimage") && !result.count("output") && !result.count("directory")))
+    using namespace jopts;
+    option_parser_t opts;
+    const auto bootimage_option = opts.add(option_constraint_t::kOptional, option_type_t::kPath, "b,bootimage", "source kernel binary, must be BOOTX64.EFI. This creates a standard EFI/BOOOT/BOOTX64.EFI layout.", option_default_t::kNotPresent);
+    const auto verbose_option = opts.add(option_constraint_t::kOptional, option_type_t::kFlag, "v,verbose", "output more information about the build process", option_default_t::kNotPresent);
+    const auto case_option = opts.add(option_constraint_t::kOptional, option_type_t::kFlag, "c,case", "preserve case of filenames. Default converts to UPPER", option_default_t::kPresent);
+    const auto directory_option = opts.add(option_constraint_t::kOptional, option_type_t::kPath, "d,directory", "source directory to copy to disk image", option_default_t::kNotPresent);
+    const auto output_option = opts.add(option_constraint_t::kRequired, option_type_t::kPath, "o,output", "output path name of created disk image", option_default_t::kNotPresent);
+    const auto label_option = opts.add(option_constraint_t::kOptional, option_type_t::kText, "l,label", "volume label of image", option_default_t::kPresent, "NOLABEL");
+    //NOTE: help is *always* available as -h or --help
+
+    //TODO?: opts.add(jopts::constraints_t::kRequiredOr, directory_option, bootimage_option);
+
+    const auto parse_result = opts.parse(argc, argv);
+    if (!parse_result)
     {
-        std::cerr << options.help() << std::endl;
+        std::cerr << "Invalid or missing arguments. Options are:\n";
+        opts.print_about(std::cerr) << std::endl;
         return -1;
     }
 
-    disktools::_verbose = result["verbose"].as<bool>();
-    disktools::_preserve_case = result["case"].as<bool>();
+    if (opts.help_needed())
+    {
+        opts.print_about(std::cout) << std::endl;
+    }
 
-    const auto output_file = result["output"].as<std::string>();
+    disktools::_verbose = verbose_option.as<bool>().value();
+    disktools::_preserve_case = case_option.as<bool>().value();
 
     char* buffer = nullptr;
     disktools::fs_t fs;
 
     // load a bootimage from disk and create standard EFI\BOOT structure
-    if (result.count("bootimage"))
+    if (bootimage_option)
     {
         auto dir_result = fs.create_directory("EFI");
         CHECK_REPORT_ABORT_ERROR(dir_result);
-        dir_result = fs.create_directory(dir_result.Value(), "BOOT");
+        dir_result = fs.create_directory(dir_result.value(), "BOOT");
         CHECK_REPORT_ABORT_ERROR(dir_result);
 
-        const auto fpath = fs::path{ result["bootimage"].as<std::string>() };
+        const auto fpath = fs::path{ bootimage_option.as<std::string>().value() };
         const auto dir_fname = fpath.stem().string() + " " + fpath.filename().extension().string().substr(1);
         // because a case insensitive comparison of std::string either requires a completely new type (traits) or a different algorithm...
         if (_stricmp(dir_fname.c_str(), "BOOTX64 EFI") != 0)
@@ -1489,7 +1490,7 @@ int main(int argc, char** argv)
             buffer = new char[size];
             ifs.read(buffer, size);
             ifs.close();
-            auto file_result = fs.create_file(dir_result.Value(), "BOOTX64 EFI", buffer, size);
+            auto file_result = fs.create_file(dir_result.value(), "BOOTX64 EFI", buffer, size);
             CHECK_REPORT_ABORT_ERROR(file_result);
         }
         else
@@ -1500,7 +1501,7 @@ int main(int argc, char** argv)
     }
 
     // copy whatever is in a given directory into the disk image
-    if (result.count("directory"))
+    if (directory_option)
     {
         if (!fs.empty())
         {
@@ -1508,22 +1509,23 @@ int main(int argc, char** argv)
             return -1;
         }
 
-        auto create_result = fs.create_from_source(result["directory"].as<std::string>());
+        auto create_result = fs.create_from_source(directory_option.as<std::string>().cref());
         CHECK_REPORT_ABORT_ERROR(create_result);
     }
 
     // partition & format 
 
-    auto writer_result = disktools::disk_sector_writer_t::create_writer(output_file, fs.size());
+    auto writer_result = disktools::disk_sector_writer_t::create_writer(output_option.as<std::string>().cref(), fs.size());
     CHECK_REPORT_ABORT_ERROR(writer_result);
-    auto* writer = writer_result.Value();
+    auto* writer = writer_result.value();
     create_blank_image(writer);
 
     auto part_result = disktools::gpt::create_efi_boot_image(writer);
     CHECK_REPORT_ABORT_ERROR(part_result);
 
-    const auto part_info = part_result.Value();
-    auto fat_result = disktools::fat::format_efi_boot_partition(writer, part_info.num_sectors(), "efi boot", fs);
+    const auto part_info = part_result.value();
+    const auto vol_label = label_option.as<std::string>().value();
+    auto fat_result = disktools::fat::format_efi_boot_partition(writer, part_info.num_sectors(), vol_label.c_str(), fs);
     CHECK_REPORT_ABORT_ERROR(fat_result);
 
     writer->flush();

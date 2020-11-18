@@ -29,5 +29,8 @@
     <ClInclude Include="gpt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="jopts.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -57,17 +57,17 @@ namespace System
         return os;
     }
 
-    struct Status
+    struct status_t
     {
-        Status() = default;
-        Status(Code code)
+        status_t() = default;
+        status_t(Code code)
             : _code{ code }
         {}
-        Status(const Status&) = default;
-        Status(Status&&) = default;
-        Status& operator=(const Status&) = default;
-        Status& operator=(Status&&) = default;
-        ~Status() = default;
+        status_t(const status_t&) = default;
+        status_t(status_t&&) = default;
+        status_t& operator=(const status_t&) = default;
+        status_t& operator=(status_t&&) = default;
+        ~status_t() = default;
 
         operator bool() const
         {
@@ -75,7 +75,7 @@ namespace System
         }
 
         [[nodiscard]]
-        Code ErrorCode() const
+        Code error_code() const
         {
             return _code;
         }
@@ -84,16 +84,91 @@ namespace System
     };
 
     template<typename T>
-    struct StatusOr
+    struct status_or_t
     {
-        StatusOr() = default;
-        StatusOr(Code code)
+        status_or_t() = default;
+        status_or_t(Code code)
             : _status{ code }
         {}
-        StatusOr(const Status& status)
+        status_or_t(const status_t& status)
             : _status{ status }
         {}
-        StatusOr(const T& val)
+        status_or_t(const T& val)
+            : _status{ Code::OK },
+            _value{ val }
+        {}
+        status_or_t& operator=(const status_or_t& rhs)
+        {
+            _status = rhs._status;
+            _value = rhs._value;
+            return *this;
+        }
+        status_or_t(const status_or_t& rhs)
+            : _status{rhs._status}
+            , _value{ rhs._value }
+        {}
+        status_or_t& operator=(status_or_t&& rhs)
+        {
+            _status = rhs._status;
+            _value = std::move(rhs._value);
+            return *this;
+        }
+
+        operator bool() const
+        {
+            return _status._code == Code::OK;
+        }
+
+        bool is_ok() const
+        {
+            return _status._code == Code::OK;
+        }
+
+        [[nodiscard]]
+        T value()
+        {
+            return _value;
+        }
+
+        [[nodiscard]]
+        T& ref()
+        {
+            return _value;
+        }
+
+        [[nodiscard]]
+        const T& cref() const
+        {
+            return _value;
+        }
+
+        [[nodiscard]]
+        int error() const
+        {
+            return static_cast<int>(_status._code);
+        }
+
+        [[nodiscard]]
+        Code error_code() const
+        {
+            return _status._code;
+        }
+
+        T           _value = {};
+        status_t      _status = Code::UNKNOWN;
+    };
+
+    template<typename T>
+    struct status_or_t<T*>
+    {
+        status_or_t() = default;
+        status_or_t(Code code)
+            : _status{ code }
+        {}
+        status_or_t(const status_t& status)
+            : _status{ status }
+        {}
+        status_or_t(T* val)
             : _status{ Code::OK },
             _value{ val }
         {}
@@ -103,80 +178,25 @@ namespace System
             return _status._code == Code::OK;
         }
 
-        bool IsOk() const
+        bool is_ok() const
         {
             return _status._code == Code::OK;
         }
 
         [[nodiscard]]
-        T& Value()
-        {
-            return _value;
-        }
-
-        [[nodiscard]]
-        int Error() const
-        {
-            return static_cast<int>(_status._code);
-        }
-
-        [[nodiscard]]
-        Code ErrorCode() const
-        {
-            return _status._code;
-        }
-
-        //NOTE: if status is anything other than OK this is garbage
-        [[nodiscard]]
-        operator T& ()
-        {
-            return _value;
-        }
-
-        T           _value = {};
-        Status      _status = Code::UNKNOWN;
-    };
-
-    template<typename T>
-    struct StatusOr<T*>
-    {
-        StatusOr() = default;
-        StatusOr(Code code)
-            : _status{ code }
-        {}
-        StatusOr(const Status& status)
-            : _status{ status }
-        {}
-        StatusOr(T* val)
-            : _status{ Code::OK },
-            _value{ val }
-        {}
-
-        bool IsOk() const
-        {
-            return _status._code == Code::OK;
-        }
-
-        [[nodiscard]]
-        Code ErrorCode() const
+        Code error_code() const
         {
             return _status._code;
         }
 
         [[nodiscard]]
-        T* Value()
-        {
-            return _value;
-        }
-
-        [[nodiscard]]
-        operator T* ()
+        T* value()
         {
             return _value;
         }
 
         //WHY: if these are ordered the other way around _value will be incorrectly set, the low order 32bits being untouched...but only here...        
         T* _value = nullptr;
-        Status      _status = Code::UNKNOWN;
+        status_t      _status = Code::UNKNOWN;
     };
 }
