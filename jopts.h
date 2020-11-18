@@ -49,28 +49,15 @@ namespace jopts
                 , _type{ type }
                 , _constraint{ constraint }
             {}
-
-            option_impl_t(option_impl_t&& rhs)
-                : _short{ std::move(rhs._short) }
-                , _long{ std::move(rhs._long) }
-                , _about{ std::move(rhs._about) }
-                , _type(rhs._type)
-                , _constraint{ rhs._constraint }
-            {}
-
+            option_impl_t(option_impl_t&& rhs) = default;
+            
             std::string         _short;
             std::string         _long;
             std::string         _about;
             option_type_t       _type;
-            option_constraint_t       _constraint;
+            option_constraint_t _constraint;
             bool                _present = false;
-
-            union _value_t {
-                std::string     _str = {};
-                bool            _flag;
-                _value_t() {}
-                ~_value_t() {}
-            } _value;
+            std::string         _str = {};
         };
 
         using option_vector_t = std::vector<option_impl_t>;
@@ -101,7 +88,7 @@ namespace jopts
             {
                 return System::Code::NOT_FOUND;
             }
-            return impl->_value._flag;
+            return impl->_present;
         }
 
         template<>
@@ -112,7 +99,7 @@ namespace jopts
             {
                 return System::Code::NOT_FOUND;
             }
-            return impl->_value._str;
+            return impl->_str;
         }
 
         operator bool() const
@@ -158,7 +145,7 @@ namespace jopts
                 switch (type)
                 {
                 case option_type_t::kFlag:
-                    opt._value._flag = default_ == option_default_t::kPresent ? true : false;
+                    opt._present = (default_ == option_default_t::kPresent ? true : false);
                     break;
                 case option_type_t::kText:
                 {
@@ -166,7 +153,7 @@ namespace jopts
                     {
                         va_list defaults;
                         va_start(defaults, default_);
-                        opt._value._str = va_arg(defaults, const char*);
+                        opt._str = va_arg(defaults, const char*);
                         va_end(defaults);
                     }
                 }
@@ -244,12 +231,6 @@ namespace jopts
                     opt->_present = true;
                     switch (opt->_type)
                     {
-                    case option_type_t::kFlag:
-                    {
-                        // flags have no arguments, they just exist...
-                        opt->_present = true;
-                    }
-                    break;
                     case option_type_t::kText:
                     {
                         if (n == (argc - 1))
@@ -257,7 +238,7 @@ namespace jopts
                             return System::Code::INVALID_ARGUMENT;
                         }
                         ++n;
-                        opt->_value._str = argv[n];
+                        opt->_str = argv[n];
                     }
                     break;
                     default:;
