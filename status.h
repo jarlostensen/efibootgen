@@ -125,7 +125,7 @@ namespace System
         }
 
         [[nodiscard]]
-        T value()
+        T value() const
         {
             return _value;
         }
@@ -190,7 +190,7 @@ namespace System
         }
 
         [[nodiscard]]
-        T* value()
+        T* value() const
         {
             return _value;
         }

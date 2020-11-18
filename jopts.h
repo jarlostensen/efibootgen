@@ -33,12 +33,8 @@ namespace jopts
     {
         // a flag is present or not present
         kFlag,
-        // a path (not validated)
-        kPath,
-        // just text
+        // just text left open to interpretation
         kText,
-        // XxY
-        kDimensions,
     };
 
     namespace detail
@@ -85,15 +81,15 @@ namespace jopts
     {
         option_t() = default;
         explicit option_t(detail::option_vector_t* opt_vec, size_t idx)
-            : _opt_vec{opt_vec}
-            , _idx{idx}
+            : _opt_vec{ opt_vec }
+            , _idx{ idx }
         {}
         option_t(const option_t&) = default;
         option_t& operator=(const option_t&) = default;
         option_t(option_t&&) = default;
-        option_t& operator=(option_t&&hs) = default;
+        option_t& operator=(option_t&& hs) = default;
         ~option_t() = default;
- 
+
         template<typename T>
         System::status_or_t<T> as() const;
 
@@ -112,9 +108,7 @@ namespace jopts
         System::status_or_t<std::string> as() const
         {
             auto* impl = &_opt_vec->at(_idx);
-            if (impl->_type != option_type_t::kText
-                &&
-                impl->_type != option_type_t::kPath)
+            if (impl->_type != option_type_t::kText)
             {
                 return System::Code::NOT_FOUND;
             }
@@ -127,7 +121,7 @@ namespace jopts
             return impl->_present;
         }
 
-        detail::option_vector_t*  _opt_vec = nullptr;
+        detail::option_vector_t* _opt_vec = nullptr;
         size_t                    _idx = 0;
     };
 
@@ -166,7 +160,6 @@ namespace jopts
                 case option_type_t::kFlag:
                     opt._value._flag = default_ == option_default_t::kPresent ? true : false;
                     break;
-                case option_type_t::kPath:
                 case option_type_t::kText:
                 {
                     if (default_ == option_default_t::kPresent)
@@ -178,14 +171,13 @@ namespace jopts
                     }
                 }
                 break;
-                case option_type_t::kDimensions:
                 default:;
                 }
             }
 
             _options.emplace_back(std::move(opt));
 
-            const auto i = _options.size()-1;
+            const auto i = _options.size() - 1;
             _short[opt_short] = i;
             _long[opt_long] = i;
 
@@ -194,8 +186,9 @@ namespace jopts
 
         // parse the parameters.
         // if strict then any unknown argument causes the parser to fail
-        // TODO: more types or kill the ones we don't use
-        System::status_or_t<bool> parse(int argc, char** argv, bool strict = false)
+        // returns status or number of matched arguments found
+        //
+        System::status_or_t<size_t> parse(int argc, char** argv, bool strict = false)
         {
             //ZZZ: perhaps too strict?
             if (_parsed)
@@ -203,12 +196,10 @@ namespace jopts
                 return System::Code::ALREADY_EXISTS;
             }
 
-            _options.clear();
-            _short.clear();
-            _long.clear();
-
             // always add this
             const auto res = add(option_constraint_t::kOptional, option_type_t::kFlag, "h,help", "about this application", option_default_t::kNotPresent);
+
+            auto arg_counter = 0u;
 
             for (int n = 1; n < argc;)
             {
@@ -249,6 +240,7 @@ namespace jopts
 
                 if (opt)
                 {
+                    ++arg_counter;
                     opt->_present = true;
                     switch (opt->_type)
                     {
@@ -258,7 +250,6 @@ namespace jopts
                         opt->_present = true;
                     }
                     break;
-                    case option_type_t::kPath:
                     case option_type_t::kText:
                     {
                         if (n == (argc - 1))
@@ -266,35 +257,36 @@ namespace jopts
                             return System::Code::INVALID_ARGUMENT;
                         }
                         ++n;
-                        opt->_value._str = argv[n];                        
+                        opt->_value._str = argv[n];
                     }
                     break;
-                    //TODO:
-                    case option_type_t::kDimensions:
                     default:;
                     }
                 }
                 ++n;
             }
 
-            // now check that we've got everything we need
-            for (auto& opt : _options)
+            if (arg_counter)
             {
-                if (opt._constraint == option_constraint_t::kRequired && !opt._present)
+                // now check that we've got everything we need
+                for (auto& opt : _options)
                 {
-                    return System::Code::INVALID_ARGUMENT;
+                    if (opt._constraint == option_constraint_t::kRequired && !opt._present)
+                    {
+                        return System::Code::INVALID_ARGUMENT;
+                    }
                 }
+                _parsed = true;
             }
 
-            _parsed = true;
-            return true;
+            return arg_counter;
         }
 
         // true if -h or --help found
         bool help_needed() const
         {
             // always the last option
-            return _options[_options.size()-1]._present;
+            return _options[_options.size() - 1]._present;
         }
 
         // print out information about our options

@@ -1434,18 +1434,18 @@ int main(int argc, char** argv)
 
     using namespace jopts;
     option_parser_t opts;
-    const auto bootimage_option = opts.add(option_constraint_t::kOptional, option_type_t::kPath, "b,bootimage", "source kernel binary, must be BOOTX64.EFI. This creates a standard EFI/BOOOT/BOOTX64.EFI layout.", option_default_t::kNotPresent);
+    const auto bootimage_option = opts.add(option_constraint_t::kOptional, option_type_t::kText, "b,bootimage", "source kernel binary, must be BOOTX64.EFI. This creates a standard EFI/BOOOT/BOOTX64.EFI layout.", option_default_t::kNotPresent);
     const auto verbose_option = opts.add(option_constraint_t::kOptional, option_type_t::kFlag, "v,verbose", "output more information about the build process", option_default_t::kNotPresent);
     const auto case_option = opts.add(option_constraint_t::kOptional, option_type_t::kFlag, "c,case", "preserve case of filenames. Default converts to UPPER", option_default_t::kPresent);
-    const auto directory_option = opts.add(option_constraint_t::kOptional, option_type_t::kPath, "d,directory", "source directory to copy to disk image", option_default_t::kNotPresent);
-    const auto output_option = opts.add(option_constraint_t::kRequired, option_type_t::kPath, "o,output", "output path name of created disk image", option_default_t::kNotPresent);
+    const auto directory_option = opts.add(option_constraint_t::kOptional, option_type_t::kText, "d,directory", "source directory to copy to disk image", option_default_t::kNotPresent);
+    const auto output_option = opts.add(option_constraint_t::kRequired, option_type_t::kText, "o,output", "output path name of created disk image", option_default_t::kNotPresent);
     const auto label_option = opts.add(option_constraint_t::kOptional, option_type_t::kText, "l,label", "volume label of image", option_default_t::kPresent, "NOLABEL");
     //NOTE: help is *always* available as -h or --help
 
     //TODO?: opts.add(jopts::constraints_t::kRequiredOr, directory_option, bootimage_option);
 
     const auto parse_result = opts.parse(argc, argv);
-    if (!parse_result)
+    if (!parse_result || parse_result.value()==0 )
     {
         std::cerr << "Invalid or missing arguments. Options are:\n";
         opts.print_about(std::cerr) << std::endl;
@@ -1471,7 +1471,7 @@ int main(int argc, char** argv)
         dir_result = fs.create_directory(dir_result.value(), "BOOT");
         CHECK_REPORT_ABORT_ERROR(dir_result);
 
-        const auto fpath = fs::path{ bootimage_option.as<std::string>().value() };
+        const auto fpath = fs::path{ bootimage_option.as<std::string>().cref() };
         const auto dir_fname = fpath.stem().string() + " " + fpath.filename().extension().string().substr(1);
         // because a case insensitive comparison of std::string either requires a completely new type (traits) or a different algorithm...
         if (_stricmp(dir_fname.c_str(), "BOOTX64 EFI") != 0)
@@ -1524,8 +1524,7 @@ int main(int argc, char** argv)
     CHECK_REPORT_ABORT_ERROR(part_result);
 
     const auto part_info = part_result.value();
-    const auto vol_label = label_option.as<std::string>().value();
-    auto fat_result = disktools::fat::format_efi_boot_partition(writer, part_info.num_sectors(), vol_label.c_str(), fs);
+    auto fat_result = disktools::fat::format_efi_boot_partition(writer, part_info.num_sectors(), label_option.as<std::string>().cref().c_str(), fs);
     CHECK_REPORT_ABORT_ERROR(fat_result);
 
     writer->flush();
