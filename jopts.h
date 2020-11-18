@@ -146,13 +146,15 @@ namespace jopts
             const auto sl_delim = shortLong.find(',');
             assert(sl_delim != std::string::npos);
 
-            const auto opt_short = shortLong.substr(0, sl_delim);
-            const auto opt_long = shortLong.substr(sl_delim + 1);
+            auto opt_short = shortLong.substr(0, sl_delim);
+            auto opt_long = shortLong.substr(sl_delim + 1);
             assert(opt_short.length() > 0 && opt_short.length() < opt_long.length());
 
+            std::transform(opt_short.begin(), opt_short.end(), opt_short.begin(), ::tolower);
             const auto si = _short.find(opt_short);
             assert(si == _short.end());
 
+            std::transform(opt_long.begin(), opt_long.end(), opt_long.begin(), ::tolower);
             const auto li = _long.find(opt_long);
             assert(li == _long.end());
 
@@ -213,7 +215,10 @@ namespace jopts
                 detail::option_impl_t* opt = nullptr;
                 if (arg[0] != '-')
                 {
-                    const auto si = _short.find(arg);
+                    std::string uc_opt = arg;
+                    std::transform(uc_opt.begin(), uc_opt.end(), uc_opt.begin(), ::tolower);
+
+                    const auto si = _short.find(uc_opt);
                     if (si != _short.end())
                     {
                         opt = &_options[si->second];
@@ -225,7 +230,10 @@ namespace jopts
                 }
                 else
                 {
-                    const auto li = _long.find(++arg);
+                    std::string uc_opt = ++arg;
+                    std::transform(uc_opt.begin(), uc_opt.end(), uc_opt.begin(), ::tolower);
+
+                    const auto li = _long.find(uc_opt);
                     if (li != _long.end())
                     {
                         opt = &_options[li->second];
@@ -255,7 +263,7 @@ namespace jopts
                             return System::Code::INVALID_ARGUMENT;
                         }
                         ++n;
-                        opt->_value._str = argv[n];
+                        opt->_value._str = argv[n];                        
                     }
                     break;
                     //TODO:
