@@ -15,6 +15,7 @@ To create a standard EFI\BOOT\BOOTX64.EFI layout
 -v, --verbose           output more information about the build process</br>
 -c, --case              preserve case of filenames. Default converts to UPPER</br>
 -l, --label             volume label of image</br>
+-f, --format            reformat existing boot image (if exists)
 -h, --help              about this application</br>
 
 ## to build
@@ -22,5 +23,5 @@ The project is built with Visual Studio 2019 and requires C++ 17 standard suppor
 The code itself is generic and should be straight forward to build and use with GCC or Clang.
 
 ## TODO
-* confirm that FAT32 dynamic layout works. Static works (-b) but -d only tested with FAT16)
+* confirm that FAT32 dynamic layout works. Static works (-b) but -d only tested with FAT16.
 * rinse and repeat for clarity
