@@ -80,9 +80,6 @@ namespace jopts
         template<typename T>
         T as() const;
 
-        template<typename T>
-        const T& as_cref() const;
-
         template<>
         bool as() const
         {
@@ -100,7 +97,7 @@ namespace jopts
         }
 
         template<>
-        const std::string& as_cref() const
+        const std::string& as() const
         {
             auto* impl = &_opt_vec->at(_idx);
             assert(impl->_type == option_type_t::kText);
