@@ -78,27 +78,32 @@ namespace jopts
         ~option_t() = default;
 
         template<typename T>
-        System::status_or_t<T> as() const;
+        T as() const;
+
+        template<typename T>
+        const T& as_cref() const;
 
         template<>
-        System::status_or_t<bool> as() const
+        bool as() const
         {
             auto* impl = &_opt_vec->at(_idx);
-            if (impl->_type != option_type_t::kFlag)
-            {
-                return System::Code::NOT_FOUND;
-            }
+            assert(impl->_type == option_type_t::kFlag);
             return impl->_present;
         }
 
         template<>
-        System::status_or_t<std::string> as() const
+        std::string as() const
         {
             auto* impl = &_opt_vec->at(_idx);
-            if (impl->_type != option_type_t::kText)
-            {
-                return System::Code::NOT_FOUND;
-            }
+            assert(impl->_type == option_type_t::kText);
+            return impl->_str;
+        }
+
+        template<>
+        const std::string& as_cref() const
+        {
+            auto* impl = &_opt_vec->at(_idx);
+            assert(impl->_type == option_type_t::kText);
             return impl->_str;
         }
 

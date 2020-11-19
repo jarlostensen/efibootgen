@@ -1460,8 +1460,8 @@ int main(int argc, char** argv)
         opts.print_about(std::cout) << std::endl;
     }
 
-    disktools::_verbose = verbose_option.as<bool>().value();
-    disktools::_preserve_case = case_option.as<bool>().value();
+    disktools::_verbose = verbose_option.as<bool>();
+    disktools::_preserve_case = case_option.as<bool>();
 
     char* buffer = nullptr;
     disktools::fs_t fs;
@@ -1474,7 +1474,7 @@ int main(int argc, char** argv)
         dir_result = fs.create_directory(dir_result.value(), "BOOT");
         CHECK_REPORT_ABORT_ERROR(dir_result);
 
-        const auto fpath = fs::path{ bootimage_option.as<std::string>().cref() };
+        const auto fpath = fs::path{ bootimage_option.as_cref<std::string>() };
         const auto dir_fname = fpath.stem().string() + " " + fpath.filename().extension().string().substr(1);
         // because a case insensitive comparison of std::string either requires a completely new type (traits) or a different algorithm...
         if (_stricmp(dir_fname.c_str(), "BOOTX64 EFI") != 0)
@@ -1512,13 +1512,13 @@ int main(int argc, char** argv)
             return -1;
         }
 
-        auto create_result = fs.create_from_source(directory_option.as<std::string>().cref());
+        auto create_result = fs.create_from_source(directory_option.as_cref<std::string>());
         CHECK_REPORT_ABORT_ERROR(create_result);
     }
 
     // partition & format 
 
-    auto writer_result = disktools::disk_sector_writer_t::create_writer(output_option.as<std::string>().cref(), fs.size());
+    auto writer_result = disktools::disk_sector_writer_t::create_writer(output_option.as_cref<std::string>(), fs.size());
     CHECK_REPORT_ABORT_ERROR(writer_result);
     auto* writer = writer_result.value();
     create_blank_image(writer);
@@ -1527,7 +1527,7 @@ int main(int argc, char** argv)
     CHECK_REPORT_ABORT_ERROR(part_result);
 
     const auto part_info = part_result.value();
-    auto fat_result = disktools::fat::format_efi_boot_partition(writer, part_info.num_sectors(), label_option.as<std::string>().cref().c_str(), fs);
+    auto fat_result = disktools::fat::format_efi_boot_partition(writer, part_info.num_sectors(), label_option.as_cref<std::string>().c_str(), fs);
     CHECK_REPORT_ABORT_ERROR(fat_result);
 
     writer->flush();
