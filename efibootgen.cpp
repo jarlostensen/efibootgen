@@ -90,23 +90,27 @@ namespace disktools
     auto _verbose = false;
     // preserve source file name cases or convert all to UPPER
     auto _preserve_case = false;
+    // reformat an existing image (if exists)
+    auto _reformat = false;
 
     // helper to make it a bit more intuitive to use and write sectors to a file
     struct disk_sector_writer_t
     {
-        disk_sector_writer_t(std::ofstream&& ofs, size_t total_sectors)
-            : _ofs{ std::move(ofs) }
+        disk_sector_writer_t(std::fstream&& fs, size_t total_sectors, bool use_existing_image)
+            : _fs{ std::move(fs) }
             , _total_sectors{ total_sectors }
+            , _use_existing_image{ use_existing_image }
         {
-            _start_pos = _ofs.tellp();
+            _start_pos = _fs.tellp();
         }
 
         disk_sector_writer_t(disk_sector_writer_t&& rhs)
-            : _ofs{ std::move(rhs._ofs) }
+            : _fs{ std::move(rhs._fs) }
             , _sector{ rhs._sector }
             , _total_sectors{ rhs._total_sectors }
             , _sectors_in_buffer{ rhs._sectors_in_buffer }
             , _start_pos{ rhs._start_pos }
+            , _use_existing_image{ rhs._use_existing_image }
         {
             rhs._sector = nullptr;
         }
@@ -114,7 +118,7 @@ namespace disktools
         ~disk_sector_writer_t()
         {
             delete[] _sector;
-            _ofs.close();
+            _fs.close();
         }
 
         static System::status_or_t<disk_sector_writer_t*> create_writer(const std::string&, size_t);
@@ -123,8 +127,8 @@ namespace disktools
         {
             if (good())
             {
-                _ofs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
-                _start_pos = _ofs.tellp();
+                _fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
+                _start_pos = _fs.tellp();
                 return good();
             }
             return false;
@@ -135,22 +139,27 @@ namespace disktools
             return _total_sectors * kSectorSizeBytes;
         }
 
+        bool using_existing() const
+        {
+            return _use_existing_image;
+        }
+
         bool good() const
         {
-            return _ofs.is_open() && _ofs.good();
+            return _fs.is_open() && _fs.good();
         }
 
         void reset()
         {
             if (good())
-                _ofs.seekp(_start_pos, std::ios::beg);
+                _fs.seekp(_start_pos, std::ios::beg);
         }
 
         void flush()
         {
             if (good())
             {
-                _ofs.flush();
+                _fs.flush();
             }
         }
 
@@ -171,24 +180,24 @@ namespace disktools
 
         bool        write_at_ex(size_t lba, size_t src_sector_offset, size_t sector_count)
         {
-            _ofs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
-            if (!_ofs.good() || sector_count > _sectors_in_buffer)
+            _fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
+            if (!_fs.good() || sector_count > _sectors_in_buffer)
             {
                 return false;
             }
-            _ofs.write(_sector + src_sector_offset * kSectorSizeBytes, (sector_count * kSectorSizeBytes));
-            return _ofs.good();
+            _fs.write(_sector + src_sector_offset * kSectorSizeBytes, (sector_count * kSectorSizeBytes));
+            return _fs.good();
         }
 
         bool        write_at(size_t lba, size_t sector_count)
         {
-            _ofs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
-            if (!_ofs.good())
+            _fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
+            if (!_fs.good())
             {
                 return false;
             }
-            _ofs.write(_sector, (sector_count * kSectorSizeBytes));
-            return _ofs.good();
+            _fs.write(_sector, (sector_count * kSectorSizeBytes));
+            return _fs.good();
         }
 
         size_t  last_lba() const
@@ -199,20 +208,28 @@ namespace disktools
         char* _sector = nullptr;
         size_t                  _sectors_in_buffer = 1;
         size_t                  _total_sectors = 0;
-        std::ofstream           _ofs;
-        std::ofstream::pos_type _start_pos;
+
+        std::fstream            _fs;
+        std::fstream::pos_type  _start_pos;
+
+        bool                    _use_existing_image = false;
     };
 
 
     // like "dd"; create a blank image of writer->_total_sectors sectors
     bool create_blank_image(disk_sector_writer_t* writer)
     {
+        if (disktools::_verbose)
+        {
+            std::cout << "\tcreating blank image of " << writer->_total_sectors << " " << kSectorSizeBytes << " byte sectors\n";
+        }
+
         writer->reset();
         writer->blank_sector();
         auto sector_count = writer->_total_sectors;
         while (writer->good() && sector_count--)
         {
-            writer->_ofs.write(writer->_sector, kSectorSizeBytes);
+            writer->_fs.write(writer->_sector, kSectorSizeBytes);
         }
         const auto result = writer->good();
         writer->reset();
@@ -449,17 +466,45 @@ namespace disktools
         // round size up to nearest 128 Megs. This pushes us out of the "floppy disk" domain
         size_t size = (content_size + (0x8000000 - 1)) & ~(0x8000000 - 1);
 
-        std::ofstream file{ oName, std::ios::binary | std::ios::trunc };
+        // if the disk image already exists, and we're reformatting, then we'll just keep it (as long as it's big enough)
+        std::fstream file;
+        auto using_existing = false;
+        if (disktools::_reformat)
+        {
+            file.open(oName, std::ios::binary | std::ios::in | std::ios::out);
+            if (file.good())
+            {
+                file.seekg(0, std::ios::end);
+                size_t image_size = file.tellg();
+                file.seekg(0);
+                if (image_size >= size)
+                {
+                    if (disktools::_verbose)
+                    {
+                        std::cout << "\tre-using existing disk image " << oName << "\n";
+                    }
+
+                    size = image_size;
+                    using_existing = true;                    
+                }
+            }
+        }
+        
+        if(!using_existing)
+        {
+            file.open( oName, std::ios::binary | std::ios::trunc | std::ios::out );
+        }
+
         if (!file.is_open())
         {
             return System::Code::NOT_FOUND;
         }
-
+        
         // round up to nearest 512 byte block
         size = (size + (kSectorSizeBytes - 1)) & ~(kSectorSizeBytes - 1);
         const auto blocks = size / kSectorSizeBytes;
 
-        return new disk_sector_writer_t{ std::move(file), blocks };
+        return new disk_sector_writer_t{ std::move(file), blocks, using_existing };
     }
 
     namespace fat
@@ -1445,10 +1490,11 @@ int main(int argc, char** argv)
     const auto directory_option = opts.add(option_constraint_t::kOptional, option_type_t::kText, "d,directory", "source directory to copy to disk image", option_default_t::kNotPresent);
     const auto output_option = opts.add(option_constraint_t::kRequired, option_type_t::kText, "o,output", "output path name of created disk image", option_default_t::kNotPresent);
     const auto label_option = opts.add(option_constraint_t::kOptional, option_type_t::kText, "l,label", "volume label of image", option_default_t::kPresent, "NOLABEL");
+    const auto reformat_disk_option = opts.add(option_constraint_t::kOptional, option_type_t::kFlag, "f,format", "reformat existing boot image (if exists)", option_default_t::kNotPresent);
     //NOTE: help is *always* available as -h or --help
 
     const auto parse_result = opts.parse(argc, argv);
-    if (!parse_result || parse_result.value()==0 )
+    if (!parse_result || parse_result.value() == 0)
     {
         std::cerr << "Invalid or missing arguments. Options are:\n";
         opts.print_about(std::cerr) << std::endl;
@@ -1462,6 +1508,7 @@ int main(int argc, char** argv)
 
     disktools::_verbose = verbose_option.as<bool>();
     disktools::_preserve_case = case_option.as<bool>();
+    disktools::_reformat = reformat_disk_option.as<bool>();
 
     char* buffer = nullptr;
     disktools::fs_t fs;
@@ -1521,7 +1568,10 @@ int main(int argc, char** argv)
     auto writer_result = disktools::disk_sector_writer_t::create_writer(output_option.as<const std::string&>(), fs.size());
     CHECK_REPORT_ABORT_ERROR(writer_result);
     auto* writer = writer_result.value();
-    create_blank_image(writer);
+    if ( !writer->using_existing() )
+    {
+        create_blank_image(writer);
+    }
 
     auto part_result = disktools::gpt::create_efi_boot_image(writer);
     CHECK_REPORT_ABORT_ERROR(part_result);
