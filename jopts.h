@@ -1,6 +1,6 @@
 #pragma once
 
-#include <unordered_map>
+#include <map>
 #include <cstdarg>
 
 // A *very* simple (but functional) options argument parser.
@@ -42,7 +42,10 @@ namespace jopts
         struct option_impl_t
         {
             option_impl_t() = default;
-            option_impl_t(option_constraint_t constraint, option_type_t type, const std::string& opt_short, const std::string& opt_long, const std::string& about)
+            option_impl_t(option_constraint_t constraint, option_type_t type, 
+                const std::string& opt_short, 
+                const std::string& opt_long, 
+                const std::string& about)
                 : _short{ opt_short }
                 , _long{ opt_long }
                 , _about{ about }
@@ -104,6 +107,14 @@ namespace jopts
             return impl->_str;
         }
 
+        template<>
+        std::string_view as() const
+        {
+            auto* impl = &_opt_vec->at(_idx);
+            assert(impl->_type == option_type_t::kText);
+            return impl->_str;
+        }
+
         operator bool() const
         {
             auto* impl = &_opt_vec->at(_idx);
@@ -133,11 +144,11 @@ namespace jopts
             auto opt_long = shortLong.substr(sl_delim + 1);
             assert(opt_short.length() > 0 && opt_short.length() < opt_long.length());
 
-            std::transform(opt_short.begin(), opt_short.end(), opt_short.begin(), ::tolower);
+            normalise_case(opt_short, opt_short);
             const auto si = _short.find(opt_short);
             assert(si == _short.end());
 
-            std::transform(opt_long.begin(), opt_long.end(), opt_long.begin(), ::tolower);
+            normalise_case(opt_long, opt_long);
             const auto li = _long.find(opt_long);
             assert(li == _long.end());
 
@@ -198,9 +209,9 @@ namespace jopts
                 detail::option_impl_t* opt = nullptr;
                 if (arg[0] != '-')
                 {
-                    std::string uc_opt = arg;
-                    std::transform(uc_opt.begin(), uc_opt.end(), uc_opt.begin(), ::tolower);
-
+                    std::string_view uc_opt = arg;
+                    normalise_case(uc_opt, arg);
+                    
                     const auto si = _short.find(uc_opt);
                     if (si != _short.end())
                     {
@@ -213,8 +224,8 @@ namespace jopts
                 }
                 else
                 {
-                    std::string uc_opt = ++arg;
-                    std::transform(uc_opt.begin(), uc_opt.end(), uc_opt.begin(), ::tolower);
+                    std::string_view uc_opt = ++arg;
+                    normalise_case(uc_opt, arg);
 
                     const auto li = _long.find(uc_opt);
                     if (li != _long.end())
@@ -283,9 +294,21 @@ namespace jopts
             return os;
         }
 
-        std::vector<detail::option_impl_t>          _options;
-        std::unordered_map<std::string, size_t>     _short;
-        std::unordered_map<std::string, size_t>     _long;
-        bool                                        _parsed = false;
+    private:
+        void normalise_case(std::string_view view, char* arg)
+        {
+            std::transform(view.begin(), view.end(), arg, ::tolower);
+        }
+
+        void normalise_case(std::string& dest , const std::string& src)
+        {
+            std::transform(src.begin(), src.end(), dest.begin(), ::tolower);
+        }
+
+        std::vector<detail::option_impl_t>              _options;
+        //NOTE: using map here *just* for heterogenuous lookups (so that we can use string_views more effectively)
+        std::map<std::string, size_t, std::less<>>      _short;
+        std::map<std::string, size_t, std::less<>>      _long;
+        bool                                            _parsed = false;
     };
 }

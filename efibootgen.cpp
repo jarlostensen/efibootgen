@@ -8,7 +8,7 @@
 #include <random>
 #include <functional>
 #include <filesystem>
-#include <unordered_map>
+#include <map>
 #include <stack>
 #include <cstdarg>
 namespace fs = std::filesystem;
@@ -219,7 +219,7 @@ namespace disktools
     // like "dd"; create a blank image of writer->_total_sectors sectors
     bool create_blank_image(disk_sector_writer_t* writer)
     {
-        if (disktools::_verbose)
+        if (_verbose)
         {
             std::cout << "\tcreating blank image of " << writer->_total_sectors << " " << kSectorSizeBytes << " byte sectors\n";
         }
@@ -263,7 +263,7 @@ namespace disktools
             {}
         };
 
-        using dir_entries_t = std::unordered_map<std::string, dir_entry_t>;
+        using dir_entries_t = std::map<std::string, dir_entry_t, std::less<>>;
 
         struct dir_t
         {
@@ -293,8 +293,8 @@ namespace disktools
 
         System::status_or_t<bool> add_dir(dir_t* parent, const std::string& sysRootPath) {
 
-            //NOTE: the std recursive_directory_iterator does not make any guarantees about the
-            //      order of traversal so instead of using it we're doing our own version here.
+            //NOTE: we need to keep track of the current directory entry
+            //      which is why this code does the recrusion "manually" instead of using recursive_directory_iterator
 
             using recursion_stack_item_t = std::pair<dir_t*, fs::directory_iterator>;
             using recursion_stack_t = std::stack<recursion_stack_item_t>;
@@ -307,6 +307,7 @@ namespace disktools
                 if (i != fs::directory_iterator())
                 {
                     if (i->is_directory())
+
                     {
                         auto result = create_directory(parent, i->path().filename().string());
                         if (result)
@@ -347,8 +348,7 @@ namespace disktools
                         }
                         else
                         {
-                            //TODO:
-                            break;
+                            return System::Code::UNAVAILABLE;
                         }
                     }
                 }
@@ -357,6 +357,7 @@ namespace disktools
                 {
                     // end of this directory, pop the stack or end
                     if (rec_stack.empty())
+
                     {
                         break;
                     }
@@ -371,7 +372,7 @@ namespace disktools
         };
 
         [[nodiscard]]
-        System::status_or_t<bool> create_from_source(const std::string& systemRootPath)
+        System::status_or_t<bool> create_from_source(std::string_view systemRootPath)
         {
             // strip any leading gunk so that the name is clean for the root directory entry
             const auto name_start = systemRootPath.find_first_not_of("./\\");
@@ -380,8 +381,8 @@ namespace disktools
                 return System::Code::NOT_FOUND;
             }
 
-            const auto stripped_root_path = systemRootPath.substr(name_start);
-            auto result = create_directory(&_root, stripped_root_path);
+            const std::string stripped_root_path{ systemRootPath.substr(name_start) };
+            const auto result = create_directory(&_root, stripped_root_path);
             if (!result)
             {
                 return result.error_code();
@@ -390,29 +391,29 @@ namespace disktools
         }
 
         [[nodiscard]]
-        System::status_or_t<dir_t*> create_directory(dir_t* parent, const std::string& name_)
+        System::status_or_t<dir_t*> create_directory(dir_t* parent, std::string name_)
         {
-            std::string name = name_;
+            std::string_view name = name_;
             if (!_preserve_case)
             {
-                std::transform(name_.begin(), name_.end(), name.begin(), ::toupper);
+                std::transform(name_.begin(), name_.end(), name_.begin(), ::toupper);
             }
 
             assert(parent->_entries.find(name) == parent->_entries.end());
 
             dir_entry_t dir_entry{ true };
             dir_entry._content._dir = new dir_t;
-            dir_entry._content._dir->_name = name;
+            dir_entry._content._dir->_name = std::move(name_);
             dir_entry._content._dir->_parent = parent;
             //NOTE: a directory is limited to 512 bytes = 16 entries here
             _size += kSectorSizeBytes;
 
-            parent->_entries.emplace(name, dir_entry);
+            parent->_entries.emplace(dir_entry._content._dir->_name, dir_entry);
             return dir_entry._content._dir;
         }
 
         [[nodiscard]]
-        System::status_or_t<dir_t*> create_directory(const std::string& name)
+        System::status_or_t<dir_t*> create_directory(std::string name)
         {
             return create_directory(&_root, name);
         }
@@ -442,17 +443,19 @@ namespace disktools
             return dir_entry._content._file;
         }
 
-        void dumpDir(const dir_t* dir = nullptr, int depth = 1) const
+        void dump_contents(const dir_t* dir = nullptr, int depth = 0) const
         {
             if (!dir)
                 dir = &_root;
 
+            const auto pad = std::string(depth * 4, ' ');
             for (auto const& [key, val] : dir->_entries)
             {
-                std::cout << std::setw(depth * 4) << key << (val._is_dir ? "\\" : "") << std::endl;
+                //NOTE: setw just doesn't work, why?
+                std::cout << pad << key << (val._is_dir ? "\\" : "") << std::endl;
                 if (val._is_dir)
                 {
-                    dumpDir(val._content._dir, depth + 1);
+                    dump_contents(val._content._dir, depth + 1);
                 }
             }
         }
@@ -485,21 +488,21 @@ namespace disktools
                     }
 
                     size = image_size;
-                    using_existing = true;                    
+                    using_existing = true;
                 }
             }
         }
-        
-        if(!using_existing)
+
+        if (!using_existing)
         {
-            file.open( oName, std::ios::binary | std::ios::trunc | std::ios::out );
+            file.open(oName, std::ios::binary | std::ios::trunc | std::ios::out);
         }
 
         if (!file.is_open())
         {
             return System::Code::NOT_FOUND;
         }
-        
+
         // round up to nearest 512 byte block
         size = (size + (kSectorSizeBytes - 1)) & ~(kSectorSizeBytes - 1);
         const auto blocks = size / kSectorSizeBytes;
@@ -1486,7 +1489,7 @@ int main(int argc, char** argv)
     option_parser_t opts;
     const auto bootimage_option = opts.add(option_constraint_t::kOptional, option_type_t::kText, "b,bootimage", "source kernel binary, must be BOOTX64.EFI. This creates a standard EFI/BOOOT/BOOTX64.EFI layout.", option_default_t::kNotPresent);
     const auto verbose_option = opts.add(option_constraint_t::kOptional, option_type_t::kFlag, "v,verbose", "output more information about the build process", option_default_t::kNotPresent);
-    const auto case_option = opts.add(option_constraint_t::kOptional, option_type_t::kFlag, "c,case", "preserve case of filenames. Default converts to UPPER", option_default_t::kPresent);
+    const auto case_option = opts.add(option_constraint_t::kOptional, option_type_t::kFlag, "c,case", "preserve case of filenames. Default converts to UPPER", option_default_t::kNotPresent);
     const auto directory_option = opts.add(option_constraint_t::kOptional, option_type_t::kText, "d,directory", "source directory to copy to disk image", option_default_t::kNotPresent);
     const auto output_option = opts.add(option_constraint_t::kRequired, option_type_t::kText, "o,output", "output path name of created disk image", option_default_t::kNotPresent);
     const auto label_option = opts.add(option_constraint_t::kOptional, option_type_t::kText, "l,label", "volume label of image", option_default_t::kPresent, "NOLABEL");
@@ -1559,7 +1562,15 @@ int main(int argc, char** argv)
             return -1;
         }
 
-        auto create_result = fs.create_from_source(directory_option.as<const std::string&>());
+        auto create_result = fs.create_from_source(directory_option.as<std::string_view>());
+
+        if (disktools::_verbose)
+        {
+            std::cout << "\tloaded content from " << directory_option.as<std::string_view>() << "...\n";
+            fs.dump_contents(nullptr, 2);
+            std::cout << "\n";
+        }
+
         CHECK_REPORT_ABORT_ERROR(create_result);
     }
 
@@ -1568,7 +1579,7 @@ int main(int argc, char** argv)
     auto writer_result = disktools::disk_sector_writer_t::create_writer(output_option.as<const std::string&>(), fs.size());
     CHECK_REPORT_ABORT_ERROR(writer_result);
     auto* writer = writer_result.value();
-    if ( !writer->using_existing() )
+    if (!writer->using_existing())
     {
         create_blank_image(writer);
     }

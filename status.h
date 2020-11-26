@@ -5,7 +5,7 @@
 namespace System
 {
     // inspired by http://www.furidamu.org/blog/2017/01/28/error-handling-with-statusor/
-    enum class Code : int
+    enum class [[nodiscard]] Code : int
     {
         OK = 0,
         CANCELLED = 1,
@@ -94,8 +94,8 @@ namespace System
             : _status{ status }
         {}
         status_or_t(const T& val)
-            : _status{ Code::OK },
-            _value{ val }
+            : _value{ val }
+        , _status{ Code::OK }
         {}
         status_or_t& operator=(const status_or_t& rhs)
         {
@@ -148,7 +148,6 @@ namespace System
             return static_cast<int>(_status._code);
         }
 
-        [[nodiscard]]
         Code error_code() const
         {
             return _status._code;
@@ -169,8 +168,8 @@ namespace System
             : _status{ status }
         {}
         status_or_t(T* val)
-            : _status{ Code::OK },
-            _value{ val }
+            : _value{ val }
+        ,_status{ Code::OK }
         {}
 
         operator bool() const
@@ -183,7 +182,6 @@ namespace System
             return _status._code == Code::OK;
         }
 
-        [[nodiscard]]
         Code error_code() const
         {
             return _status._code;
