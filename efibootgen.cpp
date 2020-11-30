@@ -128,22 +128,23 @@ int main(int argc, char** argv)
 
     // partition & format 
 
-    auto writer_result = disktools::disk_sector_writer_t::create_writer(output_option.as<const std::string&>(), fs.size());
-    CHECK_REPORT_ABORT_ERROR(writer_result);
-    auto* writer = writer_result.value();
-    if (!writer->using_existing())
+    disktools::disk_sector_image_t image;
+    const auto image_open_result = image.open(output_option.as<const std::string&>(), fs.size(), disktools::_reformat);
+    CHECK_REPORT_ABORT_ERROR(image_open_result);
+
+    disktools::disk_sector_writer_t writer{image};
+    if (!image.using_existing())
     {
-        create_blank_image(writer);
+        create_blank_image(&writer);
     }
 
-    auto part_result = disktools::gpt::create_efi_boot_image(writer);
+    auto part_result = disktools::gpt::create_efi_boot_image(&writer);
     CHECK_REPORT_ABORT_ERROR(part_result);
 
     const auto part_info = part_result.value();
-    auto fat_result = disktools::fat::create_fat_partition(writer, part_info.num_sectors(), label_option.as<const std::string&>().c_str(), fs);
+    auto fat_result = disktools::fat::create_fat_partition(&writer, part_info.num_sectors(), label_option.as<const std::string&>().c_str(), fs);
     CHECK_REPORT_ABORT_ERROR(fat_result);
 
-    delete writer;
     delete[] buffer;
 
     std::cout << "\tboot image created" << std::endl;

@@ -2,6 +2,7 @@
 
 #include "status.h"
 #include <map>
+#include <filesystem>
 
 namespace disktools
 {
@@ -24,36 +25,17 @@ namespace disktools
     // create a blank image for the size determined in writer
     bool create_blank_image(disk_sector_writer_t* writer);
 
-    // simple helper to write a file in units of 1 sector of kSectorSizeBytes bytes
-    struct disk_sector_writer_t
+    struct disk_sector_image_t
     {
-        disk_sector_writer_t(std::fstream&& fs, size_t total_sectors, bool use_existing_image)
-            : _fs{ std::move(fs) }
-            , _total_sectors{ total_sectors }
-            , _use_existing_image{ use_existing_image }
+        disk_sector_image_t() = default;
+        ~disk_sector_image_t()
         {
-            _start_pos = _fs.tellp();
-        }
-
-        ~disk_sector_writer_t()
-        {
-            delete[] _sector;
             _fs.close();
         }
-
-        // create a writer for a file and size
-        static System::status_or_t<disk_sector_writer_t*> create_writer(const std::string&, size_t);
-
-        bool set_pos(size_t lba);
 
         size_t size() const
         {
             return _total_sectors * kSectorSizeBytes;
-        }
-
-        bool using_existing() const
-        {
-            return _use_existing_image;
         }
 
         bool good() const
@@ -61,34 +43,66 @@ namespace disktools
             return _fs.good();
         }
 
-        void reset()
+        size_t total_sectors() const
         {
-            if (good())
-            {
-                _fs.seekp(_start_pos, std::ios::beg);
-            }
+            return _total_sectors;
         }
-
-        char* blank_sector(size_t count = 1);
-
-        bool write_at_ex(size_t lba, size_t src_sector_offset, size_t sector_count);
-
-        bool write_sector();
-
-        bool write_at(size_t lba, size_t sector_count);
 
         size_t  last_lba() const
         {
             return _total_sectors - 1;
         }
 
+        bool using_existing() const
+        {
+            return _using_existing;
+        }
 
-        char* _sector = nullptr;
-        size_t                  _sectors_in_buffer = 1;
+        System::status_t open(const std::string& oName, size_t content_size, bool reformat);
+
         size_t                  _total_sectors = 0;
         std::fstream            _fs;
-        std::fstream::pos_type  _start_pos;
-        bool                    _use_existing_image = false;
+        bool                    _using_existing = false;
+    };
+
+    // simple helper to write a file in units of 1 sector of kSectorSizeBytes bytes
+    struct disk_sector_writer_t
+    {
+        explicit disk_sector_writer_t(disk_sector_image_t& sector_stream)
+            : _image{sector_stream}
+        {
+            _start_pos = _image._fs.tellp();
+        }
+
+        ~disk_sector_writer_t()
+        {
+            delete[] _sector;            
+        }
+
+        disk_sector_image_t& image() const
+        {
+            return _image;
+        }
+
+        bool set_pos(size_t lba);
+
+        void reset()
+        {
+            if (_image.good())
+            {
+                _image._fs.seekp(_start_pos, std::ios::beg);
+            }
+        }
+
+        char* blank_sector(size_t count = 1);
+        bool write_at_ex(size_t lba, size_t src_sector_offset, size_t sector_count);
+        bool write_sector();
+        bool write_at(size_t lba, size_t sector_count);
+
+        disk_sector_image_t&       _image;
+        char*                       _sector = nullptr;
+        size_t                      _sectors_in_buffer = 1;
+        std::fstream::pos_type      _start_pos;        
     };
 
     struct fs_t
@@ -193,5 +207,15 @@ namespace disktools
         // format a partition as FAT16 or FAT32 depending on size requirements and initialise it with the contents of fs.
         // 
         System::status_or_t<bool> create_fat_partition(disk_sector_writer_t* writer, size_t total_sectors, const char* volumeLabel, const fs_t& fs);
+
+        struct file_contents_t
+        {
+            void*       _data;
+            size_t      _size;
+        };
+        inline System::status_or_t<file_contents_t> read_file(disk_sector_writer_t* reader, const std::filesystem::path& path)
+        {
+            return System::Code::UNIMPLEMENTED;
+        }
     }
 }

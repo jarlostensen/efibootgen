@@ -5,7 +5,6 @@
 #include <sstream>
 #include <random>
 #include <functional>
-#include <filesystem>
 #include <map>
 #include <stack>
 #include <cstdarg>
@@ -91,76 +90,75 @@ namespace disktools
     {
         if (_verbose)
         {
-            std::cout << "\tcreating blank image of " << writer->_total_sectors << " " << kSectorSizeBytes << " byte sectors\n";
+            std::cout << "\tcreating blank image of " << writer->image().total_sectors() << " " << kSectorSizeBytes << " byte sectors\n";
         }
 
         writer->reset();
         writer->blank_sector();
-        auto sector_count = writer->_total_sectors;
-        while (writer->good() && sector_count--)
+        auto sector_count = writer->image().total_sectors();
+        while (writer->image().good() && sector_count--)
         {
-            writer->_fs.write(writer->_sector, kSectorSizeBytes);
+            writer->write_sector();
         }
-        const auto result = writer->good();
+        const auto result = writer->image().good();
         writer->reset();
         return result;
     }
 
     // a basic container for files and directories in a hierarchy
-    
-    System::status_or_t<disk_sector_writer_t*> disk_sector_writer_t::create_writer(const std::string& oName, size_t content_size)
+
+    System::status_t disk_sector_image_t::open(const std::string& oName, size_t content_size, bool reformat)
     {
         // round size up to nearest 128 Megs. This pushes us out of the "floppy disk" domain
         size_t size = (content_size + (0x8000000 - 1)) & ~(0x8000000 - 1);
 
         // if the disk image already exists, and we're reformatting, then we'll just keep it (as long as it's big enough)
-        std::fstream file;
-        auto using_existing = false;
-        if (disktools::_reformat)
+        _using_existing = false;
+        if (reformat)
         {
-            file.open(oName, std::ios::binary | std::ios::in | std::ios::out);
-            if (file.good())
+            _fs.open(oName, std::ios::binary | std::ios::in | std::ios::out);
+            if (_fs.good())
             {
-                file.seekg(0, std::ios::end);
-                size_t image_size = file.tellg();
-                file.seekg(0);
+                _fs.seekg(0, std::ios::end);
+                size_t image_size = _fs.tellg();
+                _fs.seekg(0);
                 if (image_size >= size)
                 {
-                    if (disktools::_verbose)
+                    if (_verbose)
                     {
                         std::cout << "\tre-using existing disk image " << oName << "\n";
                     }
 
                     size = image_size;
-                    using_existing = true;
+                    _using_existing = true;
                 }
             }
         }
 
-        if (!using_existing)
+        if (!_using_existing)
         {
-            file.open(oName, std::ios::binary | std::ios::trunc | std::ios::out);
+            _fs.open(oName, std::ios::binary | std::ios::trunc | std::ios::out);
         }
 
-        if (!file.is_open())
+        if (!_fs.is_open())
         {
             return System::Code::NOT_FOUND;
         }
 
         // round up to nearest 512 byte block
         size = (size + (kSectorSizeBytes - 1)) & ~(kSectorSizeBytes - 1);
-        const auto blocks = size / kSectorSizeBytes;
+        _total_sectors = size / kSectorSizeBytes;
 
-        return new disk_sector_writer_t{ std::move(file), blocks, using_existing };
+        return System::Code::OK;
     }
 
     bool disk_sector_writer_t::set_pos(size_t lba)
     {
-        if (good())
+        if (_image.good())
         {
-            _fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
-            _start_pos = _fs.tellp();
-            return good();
+            _image._fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
+            _start_pos = _image._fs.tellp();
+            return _image.good();
         }
         return false;
     }
@@ -182,39 +180,39 @@ namespace disktools
 
     bool disk_sector_writer_t::write_at_ex(size_t lba, size_t src_sector_offset, size_t sector_count)
     {
-        _fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
-        if (!_fs.good() || sector_count > _sectors_in_buffer)
+        _image._fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
+        if (!_image.good() || sector_count > _sectors_in_buffer)
         {
             return false;
         }
-        _fs.write(_sector + src_sector_offset * kSectorSizeBytes, (sector_count * kSectorSizeBytes));
+        _image._fs.write(_sector + src_sector_offset * kSectorSizeBytes, (sector_count * kSectorSizeBytes));
 #ifdef _DEBUG
-        _fs.flush();
+        _image._fs.flush();
 #endif
-        return _fs.good();
+        return _image.good();
     }
 
     bool disk_sector_writer_t::write_sector()
     {
-        _fs.write(_sector, kSectorSizeBytes);
+        _image._fs.write(_sector, kSectorSizeBytes);
 #ifdef _DEBUG
-        _fs.flush();
+        _image._fs.flush();
 #endif
-        return _fs.good();
+        return _image.good();
     }
 
     bool disk_sector_writer_t::write_at(size_t lba, size_t sector_count)
     {
-        _fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
-        if (!_fs.good())
+        _image._fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
+        if (!_image.good())
         {
             return false;
         }
-        _fs.write(_sector, (sector_count * kSectorSizeBytes));
+        _image._fs.write(_sector, (sector_count * kSectorSizeBytes));
 #ifdef _DEBUG
-        _fs.flush();
+        _image._fs.flush();
 #endif
-        return _fs.good();
+        return _image.good();
     }
 
     System::status_or_t<bool> fs_t::add_dir(dir_t* parent, const std::string& sysRootPath)
@@ -671,7 +669,7 @@ namespace disktools
 
         System::status_or_t<bool> create_fat_partition(disk_sector_writer_t* writer, size_t total_sectors, const char* volumeLabel, const fs_t& fs)
         {
-            if (!writer->good() || !total_sectors)
+            if (!writer->image().good() || !total_sectors)
                 return System::Code::FAILED_PRECONDITION;
 
             const auto size = static_cast<unsigned long long>(total_sectors * kSectorSizeBytes);
@@ -968,13 +966,13 @@ namespace disktools
             mbr_prec->_starting_chs[1] = 0x02; // 0x000200/512 bytes in
             mbr_prec->_os_type = kGptProtectivePartitionOSType;
             mbr_prec->_starting_lba = 1;
-            if (writer->size() > 0xffffffff)
+            if (writer->image().size() > 0xffffffff)
             {
                 mbr_prec->_size_in_lba = 0xffffffff;
             }
             else
             {
-                mbr_prec->_size_in_lba = writer->last_lba();
+                mbr_prec->_size_in_lba = writer->image().last_lba();
             }
             // we just ignore chs altogether and set this to "infinite"
             memset(mbr_prec->_ending_chs, 0xff, sizeof(mbr_prec->_ending_chs));
@@ -1000,7 +998,7 @@ namespace disktools
             gpt_header_ptr->_header_crc32 = 0;	//<NOTE: we calculate this once we have the completed header filled in
             gpt_header_ptr->_my_lba = 1;
             // backup GPT is stored in the last LBA
-            gpt_header_ptr->_alternate_lba = writer->last_lba();
+            gpt_header_ptr->_alternate_lba = writer->image().last_lba();
 
             // From Uefi 2.6 standard ch 5:
             // 
@@ -1012,7 +1010,7 @@ namespace disktools
             //  
             gpt_header_ptr->_first_usable_lba = 34;
             // minus backup GPT + backup array
-            gpt_header_ptr->_last_usable_lba = writer->last_lba() - 2;
+            gpt_header_ptr->_last_usable_lba = writer->image().last_lba() - 2;
 
             // there is only one
             gpt_header_ptr->_partition_entry_count = 1;
@@ -1050,7 +1048,7 @@ namespace disktools
 
             // link back
             std::swap(gpt_header_ptr->_my_lba, gpt_header_ptr->_alternate_lba);
-            gpt_header_ptr->_partition_entry_lba = writer->last_lba() - 1;
+            gpt_header_ptr->_partition_entry_lba = writer->image().last_lba() - 1;
             // need to recalculate this since we've changed some entries
             gpt_header_ptr->_header_crc32 = 0;
             gpt_header_ptr->_header_crc32 = utils::rc_crc32(0, reinterpret_cast<const char*>(gpt_header_ptr), sizeof gpt_header);
