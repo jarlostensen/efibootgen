@@ -26,7 +26,7 @@ namespace System
         DATA_LOSS = 15,
     };
 
-    std::ostream& operator<<(std::ostream& os, Code code)
+    inline std::ostream& operator<<(std::ostream& os, Code code)
     {
 #define _SYSTEM_OS_OUT_CODE(codeName)\
     case System::Code::##codeName:\

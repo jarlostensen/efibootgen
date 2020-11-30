@@ -2,6 +2,7 @@
 
 #include <map>
 #include <cstdarg>
+#include <cassert>
 
 // A *very* simple (but functional) options argument parser.
 // Uses some C++ 17 features and std library containers. 

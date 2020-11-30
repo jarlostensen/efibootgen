@@ -164,9 +164,11 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="disktools.cpp" />
     <ClCompile Include="efibootgen.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="disktools.h" />
     <ClInclude Include="fat.h" />
     <ClInclude Include="gpt.h" />
     <ClInclude Include="jopts.h" />
