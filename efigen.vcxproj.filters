@@ -18,6 +18,9 @@
     <ClCompile Include="efibootgen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="disktools.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="status.h">
@@ -30,6 +33,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="jopts.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="disktools.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

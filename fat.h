@@ -93,6 +93,13 @@ namespace disktools
                 memset(_short_name, ' ', sizeof _short_name);
                 memcpy(_short_name, name, len);
             }
+
+            void get_name(char* buffer, size_t buff_len) const
+            {
+                assert(buff_len >= 12);
+                memcpy(buffer, _short_name, 11);
+                buffer[11] = 0;                
+            }
         };
 
         struct fat32_fsinfo
