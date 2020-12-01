@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 #define CHECK_REPORT_ABORT_ERROR(result)\
 if (!result)\
 {\
-    std::cerr << "* error: " << result.error_code() << std::endl;\
+    std::cerr << "*** error: \"" << result.error_code() << "\"" << std::endl;\
     return -1;\
 }
 

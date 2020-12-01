@@ -155,21 +155,10 @@ namespace disktools
 
     void disk_sector_writer_t::set_beg(size_t lba)
     {
-        //ZZZ: error handling
         if ( seek_from_beg(lba) )
         {
             _seek_beg = _image._fs.tellp();
         }
-    }
-
-    bool disk_sector_writer_t::seek_from_cur(size_t lba)
-    {
-        if (_image.good())
-        {
-            _image._fs.seekp(std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::cur);            
-            return _image.good();
-        }
-        return false;
     }
 
     bool disk_sector_writer_t::seek_from_beg(size_t lba)
@@ -200,9 +189,6 @@ namespace disktools
     bool disk_sector_writer_t::write_sector()
     {
         _image._fs.write(_sector, kSectorSizeBytes);
-#ifdef _DEBUG
-        _image._fs.flush();
-#endif
         return _image.good();
     }
 
@@ -213,9 +199,6 @@ namespace disktools
             return false;
         }
         _image._fs.write(_sector+(sector_index*kSectorSizeBytes), kSectorSizeBytes);
-#ifdef _DEBUG
-        _image._fs.flush();
-#endif
         return _image.good();
     }
 
@@ -226,9 +209,6 @@ namespace disktools
             return false;
         }
         _image._fs.write(_sector, count*kSectorSizeBytes);
-#ifdef _DEBUG
-        _image._fs.flush();
-#endif
         return _image.good();
     }
 
@@ -244,7 +224,6 @@ namespace disktools
 
     bool disk_sector_reader_t::set_beg(size_t lba)
     {
-        //ZZZ: error handling
         if ( seek_from_beg(lba) )
         {
             _seek_beg = _image._fs.tellg();

@@ -24,39 +24,44 @@ namespace disktools
     // create a blank image for the size determined in writer
     bool create_blank_image(disk_sector_writer_t* writer);
 
+    // adapter for a generic read/write image file
     struct disk_sector_image_t
     {
         disk_sector_image_t() = default;
-        ~disk_sector_image_t()
-        {
-            _fs.close();
-        }
+        ~disk_sector_image_t() = default;
 
+        [[nodiscard]]
         size_t size() const
         {
             return _total_sectors * kSectorSizeBytes;
         }
-
+        [[nodiscard]]
         bool good() const
         {
             return _fs.good();
         }
-
+        [[nodiscard]]
+        std::ios::iostate   iostate() const
+        {
+            return _fs.rdstate();
+        }
+        [[nodiscard]]
         size_t total_sectors() const
         {
             return _total_sectors;
         }
-
+        [[nodiscard]]
         size_t  last_lba() const
         {
             return _total_sectors - 1;
         }
-
+        [[nodiscard]]
         bool using_existing() const
         {
             return _using_existing;
         }
-
+        // open/create an image that can hold at least content_size bytes.
+        // if reformat: if file exists and is big enough it will be overwritten, otherwise it will be truncated
         System::status_t open(const std::string& oName, size_t content_size, bool reformat);
 
         size_t                  _total_sectors = 0;
@@ -71,7 +76,6 @@ namespace disktools
             : _image{sector_stream}
         {
         }
-
         ~disk_sector_writer_t()
         {
             delete[] _sector;            
@@ -81,18 +85,26 @@ namespace disktools
         {
             return _image;
         }
-
-        bool seek_from_cur(size_t lba);
+        // seek lba sectors from beginning
         bool seek_from_beg(size_t lba);
+        // set start position for subsequent seek_from_beg        
         void set_beg(size_t lba);        
         size_t get_beg_lba() const
         {
             return size_t(_seek_beg)/kSectorSizeBytes;
         }
-
+        // image fs iostate
+        std::ios::iostate iostate() const
+        {
+            return _image.iostate();
+        }
+        // allocate (if need be) and return a pointer to array of count kSectorSizeBytes 
         char* blank_sector(size_t count = 1);
+        // write current sector at current position
         bool write_sector();
+        // write sector number sector_index to current position
         bool write_sector_index(size_t sector_index);
+        // write count sectors
         bool write_sectors(size_t count);
         
         disk_sector_image_t&        _image;
@@ -107,19 +119,29 @@ namespace disktools
             : _image{sector_stream}
         {
         }
-
+        ~disk_sector_reader_t()
+        {
+            delete[] _sector;
+        }
         disk_sector_image_t& image() const
         {
             return _image;
         }
-
+        // seek lba sectors from beginning
         bool seek_from_beg(size_t lba);
+        // set start position for subsequent seek_from_beg
         bool set_beg(size_t lba);
+        // read one sector at current pos
         bool read_sector();
-
+        // last read sector data
         char* sector() const
         {
             return _sector;
+        }
+        // image fs iostate
+        std::ios::iostate iostate() const
+        {
+            return _image.iostate();
         }
 
         char*                       _sector = nullptr;

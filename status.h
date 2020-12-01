@@ -57,7 +57,7 @@ namespace System
         return os;
     }
 
-    struct status_t
+    struct [[nodiscard]] status_t
     {
         status_t() = default;
         status_t(Code code)
@@ -74,7 +74,6 @@ namespace System
             return _code == Code::OK;
         }
 
-        [[nodiscard]]
         Code error_code() const
         {
             return _code;
@@ -142,15 +141,9 @@ namespace System
             return _value;
         }
 
-        [[nodiscard]]
-        int error() const
-        {
-            return static_cast<int>(_status._code);
-        }
-
         Code error_code() const
         {
-            return _status._code;
+            return _status.error_code();
         }
 
         T           _value = {};
@@ -182,19 +175,20 @@ namespace System
             return _status._code == Code::OK;
         }
 
-        Code error_code() const
-        {
-            return _status._code;
-        }
-
         [[nodiscard]]
         T* value() const
         {
             return _value;
         }
 
+        Code error_code() const
+        {
+            return _status.error_code();
+        }
+
         //WHY: if these are ordered the other way around _value will be incorrectly set, the low order 32bits being untouched...but only here...        
         T* _value = nullptr;
         status_t      _status = Code::UNKNOWN;
     };
+
 }
