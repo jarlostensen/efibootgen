@@ -75,7 +75,8 @@ namespace utils
 
 namespace disktools
 {
-    
+    constexpr uint16_t kMBRSignature = 0xaa55;
+
     // generate more output
     bool _verbose = false;
     // preserve source file name cases or convert all to UPPER
@@ -93,7 +94,7 @@ namespace disktools
             std::cout << "\tcreating blank image of " << writer->image().total_sectors() << " " << kSectorSizeBytes << " byte sectors\n";
         }
 
-        writer->reset();
+        writer->seek_from_beg(0);
         writer->blank_sector();
         auto sector_count = writer->image().total_sectors();
         while (writer->image().good() && sector_count--)
@@ -101,7 +102,7 @@ namespace disktools
             writer->write_sector();
         }
         const auto result = writer->image().good();
-        writer->reset();
+        writer->seek_from_beg(0);
         return result;
     }
 
@@ -137,7 +138,7 @@ namespace disktools
 
         if (!_using_existing)
         {
-            _fs.open(oName, std::ios::binary | std::ios::trunc | std::ios::out);
+            _fs.open(oName, std::ios::binary | std::ios::trunc | std::ios::in | std::ios::out);
         }
 
         if (!_fs.is_open())
@@ -152,12 +153,30 @@ namespace disktools
         return System::Code::OK;
     }
 
-    bool disk_sector_writer_t::set_pos(size_t lba)
+    void disk_sector_writer_t::set_beg(size_t lba)
+    {
+        //ZZZ: error handling
+        if ( seek_from_beg(lba) )
+        {
+            _seek_beg = _image._fs.tellp();
+        }
+    }
+
+    bool disk_sector_writer_t::seek_from_cur(size_t lba)
     {
         if (_image.good())
         {
-            _image._fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
-            _start_pos = _image._fs.tellp();
+            _image._fs.seekp(std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::cur);            
+            return _image.good();
+        }
+        return false;
+    }
+
+    bool disk_sector_writer_t::seek_from_beg(size_t lba)
+    {
+        if (_image.good())
+        {
+            _image._fs.seekp(_seek_beg + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
             return _image.good();
         }
         return false;
@@ -178,20 +197,6 @@ namespace disktools
         return _sector;
     }
 
-    bool disk_sector_writer_t::write_at_ex(size_t lba, size_t src_sector_offset, size_t sector_count)
-    {
-        _image._fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
-        if (!_image.good() || sector_count > _sectors_in_buffer)
-        {
-            return false;
-        }
-        _image._fs.write(_sector + src_sector_offset * kSectorSizeBytes, (sector_count * kSectorSizeBytes));
-#ifdef _DEBUG
-        _image._fs.flush();
-#endif
-        return _image.good();
-    }
-
     bool disk_sector_writer_t::write_sector()
     {
         _image._fs.write(_sector, kSectorSizeBytes);
@@ -201,17 +206,63 @@ namespace disktools
         return _image.good();
     }
 
-    bool disk_sector_writer_t::write_at(size_t lba, size_t sector_count)
+    bool disk_sector_writer_t::write_sector_index(size_t sector_index)
     {
-        _image._fs.seekp(_start_pos + std::ofstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
-        if (!_image.good())
+        if(sector_index >= _sectors_in_buffer)
         {
             return false;
         }
-        _image._fs.write(_sector, (sector_count * kSectorSizeBytes));
+        _image._fs.write(_sector+(sector_index*kSectorSizeBytes), kSectorSizeBytes);
 #ifdef _DEBUG
         _image._fs.flush();
 #endif
+        return _image.good();
+    }
+
+    bool disk_sector_writer_t::write_sectors(size_t count)
+    {
+        if(_sectors_in_buffer<count)
+        {
+            return false;
+        }
+        _image._fs.write(_sector, count*kSectorSizeBytes);
+#ifdef _DEBUG
+        _image._fs.flush();
+#endif
+        return _image.good();
+    }
+
+    bool disk_sector_reader_t::seek_from_beg(size_t lba)
+    {
+        if (_image.good())
+        {
+            _image._fs.seekg(_seek_beg + std::ifstream::pos_type(lba * kSectorSizeBytes), std::ios::beg);
+            return _image.good();
+        }
+        return false;
+    }
+
+    bool disk_sector_reader_t::set_beg(size_t lba)
+    {
+        //ZZZ: error handling
+        if ( seek_from_beg(lba) )
+        {
+            _seek_beg = _image._fs.tellg();
+        }
+        return _image.good();
+    }
+
+    bool disk_sector_reader_t::read_sector()
+    {
+        if( !_image.good() )
+        {
+            return false;
+        }
+        if (_sector==nullptr)
+        {
+            _sector = new char[kSectorSizeBytes];
+        }
+        _image._fs.read(_sector, kSectorSizeBytes);
         return _image.good();
     }
 
@@ -262,13 +313,14 @@ namespace disktools
                         ifs.read(buffer, size);
                         ifs.close();
 
+                        auto stem = i->path().stem().string();
+                        const auto ext = i->path().filename().extension().string().substr(1);
+                        //NOTE: "FOO.BAR" -> "FOO     BAR"
+                        const std::string fat_name = stem
+                            .append(std::string(11 - (stem.length()+ext.length()), ' '))
+                            .append(ext);
                         /* _ =*/
-                        create_file(parent,
-                                    //NOTE: "FOO.BAR" -> "FOO BAR"
-                                    i->path().stem().string() + " " + i
-                                                                      ->path().filename().extension().string().
-                                                                      substr(1),
-                                    buffer, size);
+                        create_file(parent, fat_name, buffer, size);
 
                         // next item
                         ++i;
@@ -424,8 +476,6 @@ namespace disktools
                     else
                     {
                         // file
-
-
                         const auto num_clusters = (entry._content._file->_size + (_bytes_per_cluster - 1)) / _bytes_per_cluster;
                         entry._content._file->_start_cluster = _next_free_cluster++;
 
@@ -452,7 +502,6 @@ namespace disktools
                                 std::cout << "x[" << _next_free_cluster-1 << "]";
                             }
 
-                            _next_free_cluster++;
                             *_fat16++ = kFat16EOC;
                         }
                         else
@@ -461,7 +510,7 @@ namespace disktools
                             {
                                 std::cout << "x[" << _next_free_cluster-1 << "]";
                             }
-                            // no need to advance _next_free_cluster in this case
+                            
                             *_fat16++ = kFat16EOC;
                         }
 
@@ -490,8 +539,8 @@ namespace disktools
             ctx._next_free_cluster = 2;
 
             // fixed entries 0 and 1
-            ctx._fat16[0] = 0xff00 | boot_sector._bpb._media_descriptor;
-            ctx._fat16[1] = kFat16EOC;
+            *ctx._fat16++ = 0xff00 | boot_sector._bpb._media_descriptor;
+            *ctx._fat16++ = kFat16EOC;
 
             // recurse the directories and files
             //TODO: error handling
@@ -515,7 +564,7 @@ namespace disktools
             auto bytes_left = static_cast<long long>(entry._content._file->_size);
             const auto* bytes = static_cast<const char*>(entry._content._file->_data);
 
-            writer->set_pos(file_sector);
+            writer->seek_from_beg(file_sector);
 
             if (_verbose)
             {
@@ -586,7 +635,8 @@ namespace disktools
                 }
                 ++dir_entry;
             }
-            writer->write_at(cluster_to_lba(entry_._content._dir->_start_cluster), 1);
+            writer->seek_from_beg(cluster_to_lba(entry_._content._dir->_start_cluster));
+            writer->write_sector();
 
             // now recurse...
             //NOTE: having to do this and not [name, entry] is down to some internal ms build 142 compiler issue which I have no intent on tracking down
@@ -649,7 +699,9 @@ namespace disktools
                 }
                 ++dir_entry;
             }
-            writer->write_at(root_dir_start_lba, 1);
+
+            writer->seek_from_beg(root_dir_start_lba);
+            writer->write_sector();
 
             // remaining file system contents
             for (auto& [name, entry] : fs._root._entries)
@@ -842,8 +894,8 @@ namespace disktools
             auto* sector = writer->blank_sector();
             memcpy(sector, &boot_sector, sizeof boot_sector);
             memcpy(sector + sizeof boot_sector, extended_bpb_ptr, extended_bpb_size);
-            reinterpret_cast<uint16_t*>(sector + 510)[0] = kMBRSignature;
-            if (!writer->write_at(0, 1))
+            reinterpret_cast<uint16_t*>(sector + 510)[0] = kMBRSignature;            
+            if (!writer->write_sector())
             {
                 return System::Code::INTERNAL;
             }
@@ -860,13 +912,16 @@ namespace disktools
                 fsinfo->_struc_sig = kFsInfoStrucSig;
                 fsinfo->_tail_sig = kFsInfoTailSig;
 
-                writer->write_at(extended_bpb._fat32._information_sector, 1);
+                writer->seek_from_beg(extended_bpb._fat32._information_sector);
+                writer->write_sector();
             }
 
             // =======================================================================================
             //
 
+            // first lba available for data storage relative to the start of the partition
             const auto first_data_lba = boot_sector._bpb._reserved_sectors + (boot_sector._bpb._num_fats * sectors_per_fat) + root_dir_sector_count;
+            // lba of root dir. For FAT16 this comes before first_data_lba, for FAT32 they are identical
             auto root_dir_start_lba = 0u;
 
             // 3 is the first available data cluster and is the one that will hold the BOOT directory
@@ -904,6 +959,7 @@ namespace disktools
 
                 auto cluster_counter = bootx64_start_cluster;
                 auto fat_sector = boot_sector._bpb._reserved_sectors;
+                writer->seek_from_beg(fat_sector);
 
                 // each FAT entry points to the *next* cluster in the chain, hence the staggered start.
                 for (auto n = 1u; n < bootx64_num_clusters; ++n)
@@ -919,7 +975,8 @@ namespace disktools
                         }
 
                         // next FAT sector
-                        writer->write_at(fat_sector++, 1);
+                        writer->write_sector();
+                        ++fat_sector;
                         fat32 = reinterpret_cast<uint32_t*>(writer->blank_sector());
                         cluster_counter = 0;
                     }
@@ -928,7 +985,7 @@ namespace disktools
                 if (cluster_counter)
                 {
                     fat32[cluster_counter] = kFat32EOC;
-                    writer->write_at(fat_sector, 1);
+                    writer->write_sector();
                 }
 
                 // the root directory of a FAT32 volume is a normal file chain and can grow as large as it needs to be.
@@ -945,9 +1002,88 @@ namespace disktools
                 first_data_lba, boot_sector._bpb._sectors_per_cluster,
                 volumeLabel, fs);
 
-            writer->reset();
+            //TESTING:
+            /*disk_sector_reader_t reader{writer->image()};
+            reader.set_beg(writer->get_beg_lba());
+            const auto mnt = mount(&reader, root_dir_start_lba, first_data_lba, boot_sector._bpb._sectors_per_cluster);*/
+
             return true;
         }
+
+#ifdef WORK_IN_PROGRESS
+        //WIP: this is is far from complete and currently just used for testing
+        struct fat16_mount_point_t
+        {
+            uint16_t        _root_dir[kSectorSizeBytes/sizeof(uint16_t)];
+        };        
+        System::status_or_t<mount_point_t> mount(disk_sector_reader_t* reader, size_t root_dir_start_lba, size_t first_data_lba, size_t sectors_per_cluster)
+        {
+            //TODO: check boot sector etc.
+
+            if( _verbose )
+            {
+                std::cout << "\tmounting FAT root dir from sector " << root_dir_start_lba << ", cluster " << root_dir_start_lba/sectors_per_cluster << "\n";
+            }
+
+            reader->seek_from_beg(root_dir_start_lba);
+            if ( !reader->read_sector() )
+            {
+                return System::Code::INVALID_ARGUMENT;
+            }
+
+            auto* mount_point = new fat16_mount_point_t;
+            memcpy(mount_point->_root_dir, reader->sector(), kSectorSizeBytes);
+            const auto* dir_entry = reinterpret_cast<fat_dir_entry_t*>(mount_point->_root_dir);
+            if ( (dir_entry->_attrib & static_cast<uint8_t>(fat_file_attribute::kVolumeId)) == 0 )
+            {
+                return System::Code::NOT_FOUND;
+            }
+
+            ++dir_entry;
+            //TODO: check valid
+            
+            while(dir_entry->_first_cluster_lo)
+            {
+                char name_buffer[12];           
+                dir_entry->get_name(name_buffer, 12);
+
+                if(dir_entry->_attrib & static_cast<uint8_t>(fat_file_attribute::kDirectory) )
+                {
+                    if(_verbose)
+                    {
+                        std::cout << "\tdir \"" << name_buffer << "\", start cluster " << dir_entry->_first_cluster_lo << std::endl;
+                    }
+
+                    const auto lba = first_data_lba + (dir_entry->_first_cluster_lo-2)*sectors_per_cluster;
+                    reader->seek_from_beg(lba);
+                    reader->read_sector();
+                    dir_entry = reinterpret_cast<fat_dir_entry_t*>(reader->sector());
+                    // skip past . and the ++ below will skip past ..
+                    ++dir_entry;
+                }
+                else
+                {
+                    if(_verbose)
+                    {
+                        std::cout << "\tfile \"" << name_buffer << "\", start cluster " << dir_entry->_first_cluster_lo << ", size " << dir_entry->_size << std::endl;
+                    }
+
+                    if (strstr(name_buffer,"BOOT")!=nullptr )
+                    {
+                        const auto lba = first_data_lba + (dir_entry->_first_cluster_lo-2)*sectors_per_cluster;
+                        reader->seek_from_beg(lba);
+                        reader->read_sector();
+                        auto* data = reinterpret_cast<char*>(reader->sector());
+                        data = nullptr;
+                    }
+                }
+
+                ++dir_entry;
+            }
+
+            return mount_point;
+        }
+#endif // WORK_IN_PROGRESS
 
     } // namespace fat
 
@@ -978,7 +1114,7 @@ namespace disktools
             memset(mbr_prec->_ending_chs, 0xff, sizeof(mbr_prec->_ending_chs));
             memcpy(sector + 510, &kMBRSignature, sizeof(kMBRSignature));
 
-            writer->write_at(0, 1);
+            writer->write_sector();
 
             if (_verbose)
             {
@@ -1039,7 +1175,7 @@ namespace disktools
             gpt_header_ptr->_header_crc32 = utils::rc_crc32(0, reinterpret_cast<const char*>(gpt_header_ptr), sizeof gpt_header);
 
             // this writes both header and array sectors
-            writer->write_at(1, 2);
+            writer->write_sectors(2);
 
             if (_verbose)
             {
@@ -1054,9 +1190,12 @@ namespace disktools
             gpt_header_ptr->_header_crc32 = utils::rc_crc32(0, reinterpret_cast<const char*>(gpt_header_ptr), sizeof gpt_header);
 
             // backup array
-            writer->write_at_ex(gpt_header_ptr->_my_lba - 1, 1, 1);
+            writer->seek_from_beg(gpt_header_ptr->_my_lba - 1);
+            writer->write_sector_index(1);
+
             // backup header
-            writer->write_at_ex(gpt_header_ptr->_my_lba, 0, 1);
+            writer->seek_from_beg(gpt_header_ptr->_my_lba);
+            writer->write_sector();
 
             if (_verbose)
             {
@@ -1068,8 +1207,7 @@ namespace disktools
             partition_info_t info;
             info._first_usable_lba = gpt_header_ptr->_first_usable_lba;
             info._last_usable_lba = gpt_header_ptr->_last_usable_lba;
-            writer->set_pos(gpt_header_ptr->_first_usable_lba);
-
+            
             return info;
         }
     }

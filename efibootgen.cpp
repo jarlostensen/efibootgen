@@ -140,8 +140,9 @@ int main(int argc, char** argv)
 
     auto part_result = disktools::gpt::create_efi_boot_image(&writer);
     CHECK_REPORT_ABORT_ERROR(part_result);
-
+    
     const auto part_info = part_result.value();
+    writer.set_beg(part_info._first_usable_lba);
     auto fat_result = disktools::fat::create_fat_partition(&writer, part_info.num_sectors(), label_option.as<const std::string&>().c_str(), fs);
     CHECK_REPORT_ABORT_ERROR(fat_result);
 

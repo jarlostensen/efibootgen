@@ -17,8 +17,7 @@ namespace disktools
     // this is the *only* sector size we support here. UEFI does support other sector sizes but we don't bother and
     // most of the reference literature and definitions assume a 512 byte sector size.
     inline constexpr size_t kSectorSizeBytes = 512;
-    inline constexpr uint16_t kMBRSignature = 0xaa55;
-
+    
     struct disk_sector_writer_t;
     struct fs_t;
 
@@ -71,7 +70,6 @@ namespace disktools
         explicit disk_sector_writer_t(disk_sector_image_t& sector_stream)
             : _image{sector_stream}
         {
-            _start_pos = _image._fs.tellp();
         }
 
         ~disk_sector_writer_t()
@@ -84,25 +82,49 @@ namespace disktools
             return _image;
         }
 
-        bool set_pos(size_t lba);
-
-        void reset()
+        bool seek_from_cur(size_t lba);
+        bool seek_from_beg(size_t lba);
+        void set_beg(size_t lba);        
+        size_t get_beg_lba() const
         {
-            if (_image.good())
-            {
-                _image._fs.seekp(_start_pos, std::ios::beg);
-            }
+            return size_t(_seek_beg)/kSectorSizeBytes;
         }
 
         char* blank_sector(size_t count = 1);
-        bool write_at_ex(size_t lba, size_t src_sector_offset, size_t sector_count);
         bool write_sector();
-        bool write_at(size_t lba, size_t sector_count);
-
-        disk_sector_image_t&       _image;
+        bool write_sector_index(size_t sector_index);
+        bool write_sectors(size_t count);
+        
+        disk_sector_image_t&        _image;
         char*                       _sector = nullptr;
         size_t                      _sectors_in_buffer = 1;
-        std::fstream::pos_type      _start_pos;        
+        std::ofstream::pos_type     _seek_beg{};
+    };
+
+    struct disk_sector_reader_t
+    {
+        explicit disk_sector_reader_t(disk_sector_image_t& sector_stream)
+            : _image{sector_stream}
+        {
+        }
+
+        disk_sector_image_t& image() const
+        {
+            return _image;
+        }
+
+        bool seek_from_beg(size_t lba);
+        bool set_beg(size_t lba);
+        bool read_sector();
+
+        char* sector() const
+        {
+            return _sector;
+        }
+
+        char*                       _sector = nullptr;
+        disk_sector_image_t&        _image;
+        std::ifstream::pos_type     _seek_beg{};
     };
 
     struct fs_t
@@ -110,8 +132,8 @@ namespace disktools
         struct dir_t;
         struct file_t
         {
-            dir_t* _parent;
-            const void* _data;
+            dir_t*          _parent;
+            const void*     _data;
             size_t          _size;
             size_t          _start_cluster;
         };
@@ -208,14 +230,7 @@ namespace disktools
         // 
         System::status_or_t<bool> create_fat_partition(disk_sector_writer_t* writer, size_t total_sectors, const char* volumeLabel, const fs_t& fs);
 
-        struct file_contents_t
-        {
-            void*       _data;
-            size_t      _size;
-        };
-        inline System::status_or_t<file_contents_t> read_file(disk_sector_writer_t* reader, const std::filesystem::path& path)
-        {
-            return System::Code::UNIMPLEMENTED;
-        }
+        using mount_point_t = void*;
+        System::status_or_t<mount_point_t> mount(disk_sector_reader_t* reader, size_t root_dir_start_lba, size_t first_data_lba, size_t sectors_per_cluster);
     }
 }
