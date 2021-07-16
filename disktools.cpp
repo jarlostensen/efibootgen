@@ -329,22 +329,17 @@ namespace disktools
         return true;
     }
 
-    System::status_or_t<bool> fs_t::create_from_source(std::string_view systemRootPath)
+    System::status_or_t<bool> fs_t::create_from_source(std::string_view sourcePath)
     {
         // strip any leading gunk so that the name is clean for the root directory entry
-        const auto name_start = systemRootPath.find_first_not_of("./\\");
+        const auto name_start = sourcePath.find_first_not_of("./\\");
         if (name_start == std::string::npos)
         {
             return System::Code::NOT_FOUND;
         }
 
-        const std::string stripped_root_path{systemRootPath.substr(name_start)};
-        const auto result = create_directory(&_root, stripped_root_path);
-        if (!result)
-        {
-            return result.error_code();
-        }
-        return add_dir(result.value(), stripped_root_path);
+        const std::string stripped_root_path{ sourcePath.substr(name_start)};        
+        return add_dir(&_root, stripped_root_path);
     }
 
     System::status_or_t<fs_t::dir_t*> fs_t::create_directory(dir_t* parent, std::string name_)

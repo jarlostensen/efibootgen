@@ -205,7 +205,8 @@ namespace disktools
         }
 
         System::status_or_t<bool> add_dir(dir_t* parent, const std::string& sysRootPath);
-        System::status_or_t<bool> create_from_source(std::string_view systemRootPath);
+        // create based on contents in sourcePath. NOTE: sourcePath itself is *not* included in the disk image
+        System::status_or_t<bool> create_from_source(std::string_view sourcePath);
         System::status_or_t<dir_t*> create_directory(dir_t* parent, std::string name_);
         System::status_or_t<dir_t*> create_directory(std::string name)
         {
