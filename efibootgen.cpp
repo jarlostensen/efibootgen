@@ -1,11 +1,6 @@
 
-#include <iostream>
-#include <fstream>
-#include <functional>
-#include <filesystem>
+#include "platform.h"
 #include "disktools.h"
-namespace fs = std::filesystem;
-
 #include "status.h"
 #include "jopts.h"
 
@@ -15,6 +10,7 @@ if (!result)\
     std::cerr << "*** error: \"" << result.error_code() << "\"" << std::endl;\
     return -1;\
 }
+
 
 int main(int argc, char** argv)
 {
@@ -77,9 +73,9 @@ int main(int argc, char** argv)
         CHECK_REPORT_ABORT_ERROR(dir_result);
 
         const auto fpath = fs::path{ bootimage_option.as<const std::string&>() };
-        const auto dir_fname = fpath.stem().string() + " " + fpath.filename().extension().string().substr(1);
+        const auto dir_fname = fpath.stem().string() + " " + fpath.filename().extension().string().substr(1);        
         // because a case insensitive comparison of std::string either requires a completely new type (traits) or a different algorithm...
-        if (_stricmp(dir_fname.c_str(), "BOOTX64 EFI") != 0)
+        if (xstricmp(dir_fname.c_str(), "BOOTX64 EFI") != 0)
         {
             std::cerr << "*error: bootimage must be called BOOTX64.EFI\n";
             return -1;

@@ -1,3 +1,4 @@
+
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -8,13 +9,13 @@
 #include <map>
 #include <stack>
 #include <cstdarg>
-namespace fs = std::filesystem;
 
 // none of these are critical to us at this point
 #pragma warning(disable:5045)
 #pragma warning(disable:4514)
 #pragma warning(disable:4820)
 
+#include "platform.h"
 #include "status.h"
 #include "fat.h"
 #include "gpt.h"
@@ -260,8 +261,11 @@ namespace disktools
         {
             if (i != fs::directory_iterator())
             {
+#ifdef _WIN32
                 if (i->is_directory())
-
+#else
+                if ( fs::is_directory(i->status()) )
+#endif                
                 {
                     auto result = create_directory(parent, i->path().filename().string());
                     if (result)
@@ -1145,8 +1149,8 @@ namespace disktools
             memcpy(gpt_partition->_name, kEfiBootPartName, sizeof kEfiBootPartName);
 
             // we're only considering ONE header here
-            gpt_header_ptr->_partition_array_crc32 = utils::rc_crc32(0, reinterpret_cast<const char*>(gpt_partition), sizeof gpt_partition_header);
-            gpt_header_ptr->_header_crc32 = utils::rc_crc32(0, reinterpret_cast<const char*>(gpt_header_ptr), sizeof gpt_header);
+            gpt_header_ptr->_partition_array_crc32 = utils::rc_crc32(0, reinterpret_cast<const char*>(gpt_partition), sizeof(gpt_partition_header));
+            gpt_header_ptr->_header_crc32 = utils::rc_crc32(0, reinterpret_cast<const char*>(gpt_header_ptr), sizeof(gpt_header));
 
             // this writes both header and array sectors
             writer->write_sectors(2);
@@ -1161,7 +1165,7 @@ namespace disktools
             gpt_header_ptr->_partition_entry_lba = writer->image().last_lba() - 1;
             // need to recalculate this since we've changed some entries
             gpt_header_ptr->_header_crc32 = 0;
-            gpt_header_ptr->_header_crc32 = utils::rc_crc32(0, reinterpret_cast<const char*>(gpt_header_ptr), sizeof gpt_header);
+            gpt_header_ptr->_header_crc32 = utils::rc_crc32(0, reinterpret_cast<const char*>(gpt_header_ptr), sizeof(gpt_header));
 
             // backup array
             writer->seek_from_beg(gpt_header_ptr->_my_lba - 1);

@@ -84,37 +84,7 @@ namespace jopts
         template<typename T>
         T as() const;
 
-        template<>
-        bool as() const
-        {
-            auto* impl = &_opt_vec->at(_idx);
-            assert(impl->_type == option_type_t::kFlag);
-            return impl->_present;
-        }
-
-        template<>
-        std::string as() const
-        {
-            auto* impl = &_opt_vec->at(_idx);
-            assert(impl->_type == option_type_t::kText);
-            return impl->_str;
-        }
-
-        template<>
-        const std::string& as() const
-        {
-            auto* impl = &_opt_vec->at(_idx);
-            assert(impl->_type == option_type_t::kText);
-            return impl->_str;
-        }
-
-        template<>
-        std::string_view as() const
-        {
-            auto* impl = &_opt_vec->at(_idx);
-            assert(impl->_type == option_type_t::kText);
-            return impl->_str;
-        }
+        
 
         operator bool() const
         {
@@ -125,6 +95,38 @@ namespace jopts
         detail::option_vector_t* _opt_vec = nullptr;
         size_t                    _idx = 0;
     };
+
+    template<>
+    bool option_t::as() const
+    {
+        auto* impl = &_opt_vec->at(_idx);
+        assert(impl->_type == option_type_t::kFlag);
+        return impl->_present;
+    }
+
+    template<>
+    std::string option_t::as() const
+    {
+        auto* impl = &_opt_vec->at(_idx);
+        assert(impl->_type == option_type_t::kText);
+        return impl->_str;
+    }
+
+    template<>
+    const std::string& option_t::as() const
+    {
+        auto* impl = &_opt_vec->at(_idx);
+        assert(impl->_type == option_type_t::kText);
+        return impl->_str;
+    }
+
+    template<>
+    std::string_view option_t::as() const
+    {
+        auto* impl = &_opt_vec->at(_idx);
+        assert(impl->_type == option_type_t::kText);
+        return impl->_str;
+    }
 
     // the actual parser
     struct option_parser_t
