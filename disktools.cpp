@@ -95,7 +95,7 @@ namespace disktools
             std::cout << "\tcreating blank image of " << writer->image().total_sectors() << " " << kSectorSizeBytes << " byte sectors\n";
         }
 
-        writer->seek_from_beg(0);
+         writer->seek_from_beg(0);
         writer->blank_sector();
         auto sector_count = writer->image().total_sectors();
         while (writer->image().good() && sector_count--)
@@ -755,6 +755,8 @@ namespace disktools
             // as per MS Windows' standard; any volume of size < 512MB shall be FAT16
             if (size < 0x20000000)
             {
+                //TODO: anything other than FAT32 is not allowed for UEFI bootable media so we need to warn against this
+
                 type = fat_type::kFat16;
 
                 // anything not set defaults to 0

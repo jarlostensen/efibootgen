@@ -270,6 +270,7 @@ namespace jopts
                 {
                     if (opt._constraint == option_constraint_t::kRequired && !opt._present)
                     {
+                        //TODO: this would be much nicer if it also returned the actual missing parameter!
                         return System::Code::INVALID_ARGUMENT;
                     }
                 }
@@ -292,7 +293,7 @@ namespace jopts
             auto i = 0u;
             for (auto& opt : _options)
             {
-                os << "-" << opt._short << ", --" << opt._long << "\t\t" << opt._about << "\n";
+                os << (opt._constraint == option_constraint_t::kRequired ? "Req. ": "     ") << "-" << opt._short << ", --" << opt._long << "\t\t" << opt._about << "\n";
             }
             return os;
         }
