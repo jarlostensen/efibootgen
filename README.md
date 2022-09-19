@@ -3,6 +3,11 @@ A simple, cross platform, tool to generate (U)EFI bootable disk images with.
 
 This tool creates a FAT formatted, GPT partitioned, disk image that can be used to boot UEFI kernels with (for example)</br>
 
+---
+**NOTE**
+efibootgen works pretty well on Windows but the Linux version has some bugs (probably due to porting the use of std::filesystem). However, on Linux, I highly recommend going with https://github.com/jncronin/mkgpt instead.
+---
+
 ## usage
 To create an image from a directory:
 
